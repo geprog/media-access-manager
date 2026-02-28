@@ -31,6 +31,8 @@
   "batch_count_placeholder": "z.B. 50",
   "batch_usage_limit": "Nutzungslimit (optional)",
   "batch_expires_at": "Läuft ab am (optional)",
+  "batches_title": "Batches",
+  "batches_tokens_count": "Tokens",
   "public_invalid_token": "Dieser Link ist nicht mehr gültig. Bitte kontaktieren Sie den Administrator.",
   "public_loading": "Wird geladen..."
 }

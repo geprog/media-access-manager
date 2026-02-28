@@ -7,10 +7,10 @@
     >
       ← {{ $t('media_list_title') }}
     </UButton>
-    <UCard>
+    <UCard v-if="media">
       <template #header>
         <h1 class="text-2xl font-bold">
-          {{ media?.title ?? '...' }}
+          {{ media.title ?? '...' }}
         </h1>
       </template>
       <div class="space-y-6">
@@ -29,34 +29,36 @@
               @click="showBatchModal = true"
             />
           </div>
-          <UTable
-            v-if="tokens.length > 0"
-            :data="tokens"
+          <BatchTokensTable
+            :media-id="id"
             :columns="tokenColumns"
           />
-          <p v-else class="py-4 text-gray-500">
-            {{ $t('tokens_empty') }}
-          </p>
         </div>
-        <div v-if="batches.length > 0">
+        <div v-if="batches && batches.length > 0">
           <h2 class="mb-4 text-lg font-semibold">
-            Batches
+            {{ $t('batches_title') }}
           </h2>
-          <div class="space-y-2">
-            <div
-              v-for="b in batches"
-              :key="b.id"
-              class="flex items-center justify-between rounded border p-3"
-            >
-              <span>{{ b.name || b.id }} ({{ b.count }} tokens)</span>
-              <UButton
-                :label="$t('tokens_download_qr_zip')"
-                size="sm"
-                :href="`/api/tokens/batch/${b.id}/qr-zip`"
-                target="_blank"
-              />
-            </div>
-          </div>
+          <UAccordion
+            type="multiple"
+            :items="batchAccordionItems"
+          >
+            <template #content="{ item }">
+              <div class="space-y-3 pb-3">
+                <div class="flex justify-end">
+                  <UButton
+                    :label="$t('tokens_download_qr_zip')"
+                    size="sm"
+                    :href="`/api/tokens/batch/${item.value}/qr-zip`"
+                    target="_blank"
+                  />
+                </div>
+                <BatchTokensTable
+                  :batch-id="item.value"
+                  :columns="tokenColumns"
+                />
+              </div>
+            </template>
+          </UAccordion>
         </div>
       </div>
     </UCard>
@@ -118,13 +120,19 @@ const { t } = useI18n();
 interface TokenRow { token: string, name: string, usageCount: number, usageLimit: number | null, expiresAt: string | null, batchId?: string }
 
 const id = computed(() => route.params.id as string);
-const media = ref<{ title: string } | null>(null);
-const tokens = ref<TokenRow[]>([]);
-const batches = ref<Array<{ id: string, name: string, count: number }>>([]);
+const { data: media } = useFetch(`/api/media/${id.value}`);
+const { data: batches } = useFetch(`/api/batches?mediaId=${id.value}`);
 const showCreateModal = ref(false);
 const showBatchModal = ref(false);
 const tokenForm = ref({ name: '' });
 const batchForm = ref({ name: '', count: 50, usageLimit: null as number | null, expiresAt: '' });
+
+const batchAccordionItems = computed(() =>
+  batches.value?.map(b => ({
+    label: `${b.name || b.id} (${b.count} ${t('batches_tokens_count')})`,
+    value: b.id,
+  })),
+);
 
 function formatDate(ts: string | number | Date) {
   return new Date(ts).toLocaleDateString();
@@ -156,19 +164,6 @@ const tokenColumns: TableColumn<TokenRow>[] = [
   },
 ];
 
-onMounted(loadData);
-
-async function loadData() {
-  const [mediaList, tokenList, batchList] = await Promise.all([
-    $fetch<Array<{ id: string, title: string }>>('/api/media'),
-    $fetch<TokenRow[]>(`/api/tokens?mediaId=${id.value}`),
-    $fetch<Array<{ id: string, name: string, count: number }>>(`/api/batches?mediaId=${id.value}`),
-  ]);
-  media.value = mediaList.find(m => m.id === id.value) ?? null;
-  tokens.value = tokenList;
-  batches.value = batchList;
-}
-
 async function handleCreateToken() {
   if (!tokenForm.value.name.trim())
     return;
@@ -178,7 +173,6 @@ async function handleCreateToken() {
   });
   showCreateModal.value = false;
   tokenForm.value.name = '';
-  await loadData();
 }
 
 async function handleCreateBatch() {
@@ -199,6 +193,5 @@ async function handleCreateBatch() {
   });
   showBatchModal.value = false;
   batchForm.value = { name: '', count: 50, usageLimit: null, expiresAt: '' };
-  await loadData();
 }
 </script>
