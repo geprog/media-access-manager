@@ -1,6 +1,8 @@
 {
   "version": "0.2",
-  "import": ["@cspell/dict-de-de/cspell-ext.json"],
+  "import": [
+    "@cspell/dict-de-de/cspell-ext.json"
+  ],
   "language": "en",
   "ignorePaths": [
     "pnpm-lock.yml",
@@ -8,20 +10,34 @@
     ".cspell.json",
     ".nuxt",
     "pnpm-lock.yaml",
-    "playwright-report"
+    "playwright-report",
+    "test-results",
+    "server/db/migrations/**"
   ],
   "words": [
+    "anmelden",
+    "autoincrement",
+    "demi",
     "dprint",
+    "esbuild",
+    "extractus",
     "geprog",
+    "labelable",
+    "npmjs",
     "nuxt",
-    "nuxtjs"
+    "nuxtjs",
+    "oembed",
+    "qrcode",
+    "unrs",
+    "wrongpassword"
   ],
   "overrides": [
     {
-      "filename": ["i18n/locales/de.json"],
+      "filename": [
+        "i18n/locales/de.json"
+      ],
       "language": "de,en",
-      "words": [
-      ]
+      "words": []
     }
   ]
 }

@@ -1,27 +1,43 @@
 <template>
-  <div class="flex h-lvh flex-col">
-    <UNavigationMenu :items class="w-full" />
-    <main class="mx-auto mb-20 flex items-center h-full w-full max-w-6xl flex-col p-2 py-4 sm:py-6 lg:py-8">
+  <div class="flex min-h-screen flex-col">
+    <header class="border-b border-gray-200 dark:border-gray-800">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        <div class="flex items-center gap-4">
+          <img
+            v-if="logo"
+            :src="logo"
+            :alt="title"
+            class="h-8 object-contain"
+          >
+          <NuxtLink to="/" class="text-lg font-semibold">
+            {{ title }}
+          </NuxtLink>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {{ $t('media_list_title') }}
+          </span>
+          <UButton
+            variant="ghost"
+            :label="$t('logout')"
+            @click="handleLogout"
+          />
+        </div>
+      </div>
+    </header>
+    <main class="flex-1 p-4">
       <slot />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui';
+const router = useRouter();
+const { clear } = useUserSession();
+const { title, logo } = useRuntimeConfig().public;
 
-const { t } = useI18n();
-
-const items = computed<NavigationMenuItem[]>(() => [
-  [
-    {
-      label: t('start_page'),
-      to: '/',
-    },
-    {
-      label: t('other_page'),
-      to: '/other',
-    },
-  ],
-]);
+async function handleLogout() {
+  await clear();
+  await router.push('/login');
+}
 </script>

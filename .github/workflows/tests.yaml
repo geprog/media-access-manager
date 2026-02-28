@@ -47,6 +47,19 @@ jobs:
           run_install: true
       - run: pnpm spelling
 
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: true
+      - run: pnpm test run
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
@@ -74,6 +87,8 @@ jobs:
 
       - name: Run Playwright tests
         run: pnpm test:e2e
+        env:
+          ADMIN_PASSWORD: test
 
       - name: Upload Playwright Test Report
         if: always()

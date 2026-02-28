@@ -6,11 +6,32 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   telemetry: false,
   ssr: false,
-  modules: ['@nuxt/ui', '@nuxtjs/i18n'],
+  runtimeConfig: {
+    adminPassword: '',
+    vimeoApiToken: '',
+    public: {
+      title: 'Media Access Manager',
+      primaryColor: '',
+      logo: '',
+    },
+    session: {
+      name: 'mam-session',
+      password: '',
+    },
+  },
+  $development: {
+    runtimeConfig: {
+      adminPassword: 'password',
+      session: {
+        password: 'my-secret-password-with-min-32-characters',
+      },
+    },
+  },
+  modules: ['@nuxt/ui', '@nuxtjs/i18n', 'nuxt-auth-utils'],
   css: ['~/assets/css/main.css'],
   app: {
     head: {
-      title: 'Nuxt Template',
+      title: 'Media Access Manager',
       titleTemplate: '%s',
       charset: 'utf-8',
       viewport: 'width=device-width, initial-scale=1',

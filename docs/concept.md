@@ -8,14 +8,14 @@ A simplified Nuxt.js webapp for managing token-based access to media from differ
 
 ## Comparison: Original vs. MVP
 
-| Aspect    | Original Concept                     | MVP                                             |
-| --------- | ------------------------------------ | ----------------------------------------------- |
-| Auth      | User accounts (email/password)      | Single global password                          |
-| Media     | Vimeo only                           | Provider abstraction layer                       |
-| Tokens    | Complex (IP, batch QR, etc.)         | Create & batch per media, list tokens           |
-| Analytics | Device UUID, TokenUsage, dashboards   | None (later stage)                               |
-| QR        | Batch generation, ZIP download       | Batch generation, ZIP download (kept)           |
-| Theming   | Not specified                        | White-label: primary color, logo, company name  |
+| Aspect    | Original Concept                    | MVP                                            |
+| --------- | ----------------------------------- | ---------------------------------------------- |
+| Auth      | User accounts (email/password)      | Single global password                         |
+| Media     | Vimeo only                          | Provider abstraction layer                     |
+| Tokens    | Complex (IP, batch QR, etc.)        | Create & batch per media, list tokens          |
+| Analytics | Device UUID, TokenUsage, dashboards | None (later stage)                             |
+| QR        | Batch generation, ZIP download      | Batch generation, ZIP download (kept)          |
+| Theming   | Not specified                       | White-label: primary color, logo, company name |
 
 ---
 
@@ -29,11 +29,11 @@ flowchart LR
         VimeoProvider[Vimeo Provider]
         FutureProvider[Future Providers...]
     end
-    
+
     MediaService[Media Service] -->|implements| ProviderInterface[Media Provider Interface]
     ProviderInterface --> VimeoProvider
     ProviderInterface --> FutureProvider
-    
+
     MediaService -->|list & resolve| Media[Media Items]
 ```
 
@@ -44,57 +44,57 @@ flowchart LR
 ```ts
 // oEmbed response types per https://oembed.com/
 interface OEmbedBase {
-  type: 'photo' | 'video' | 'link' | 'rich';
-  version: string;
-  title?: string;
-  author_name?: string;
-  author_url?: string;
-  provider_name?: string;
-  provider_url?: string;
-  cache_age?: number;
-  thumbnail_url?: string;
-  thumbnail_width?: number;
-  thumbnail_height?: number;
+  type: 'photo' | 'video' | 'link' | 'rich'
+  version: string
+  title?: string
+  author_name?: string
+  author_url?: string
+  provider_name?: string
+  provider_url?: string
+  cache_age?: number
+  thumbnail_url?: string
+  thumbnail_width?: number
+  thumbnail_height?: number
 }
 
 interface OEmbedVideo extends OEmbedBase {
-  type: 'video';
-  html: string;
-  width: number;
-  height: number;
+  type: 'video'
+  html: string
+  width: number
+  height: number
 }
 
 interface OEmbedPhoto extends OEmbedBase {
-  type: 'photo';
-  url: string;
-  width: number;
-  height: number;
+  type: 'photo'
+  url: string
+  width: number
+  height: number
 }
 
 interface OEmbedLink extends OEmbedBase {
-  type: 'link';
+  type: 'link'
 }
 
 interface OEmbedRich extends OEmbedBase {
-  type: 'rich';
-  html: string;
-  width?: number;
-  height?: number;
+  type: 'rich'
+  html: string
+  width?: number
+  height?: number
 }
 
 type OEmbedResponse = OEmbedVideo | OEmbedPhoto | OEmbedLink | OEmbedRich;
 
 interface MediaProvider {
-  id: string;                    // e.g. "vimeo"
-  listMedia(): Promise<MediaItem[]>;
-  getViewableContent(mediaId: string, providerConfig: unknown): Promise<OEmbedResponse>;
+  id: string // e.g. "vimeo"
+  listMedia: () => Promise<MediaItem[]>
+  getViewableContent: (mediaId: string, providerConfig: unknown) => Promise<OEmbedResponse>
 }
 
 interface MediaItem {
-  id: string;
-  providerId: string;
-  title: string;
-  providerConfig: Record<string, unknown>;  // e.g. { vimeoId, encryptedPassword }
+  id: string
+  providerId: string
+  title: string
+  providerConfig: Record<string, unknown> // e.g. { vimeoId, encryptedPassword }
 }
 ```
 
@@ -113,7 +113,7 @@ interface MediaItem {
 
 **Schema** (simplified):
 
-- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `starts_at`, `expires_at`, `usage_limit`, `usage_count`, `created_at`
+- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `usage_limit`, `usage_count`, `created_at`
 - No `TokenUsage`, `TokenAnalytics` tables
 
 **Validation logic**:
@@ -180,10 +180,10 @@ flowchart TD
     AdminUI -->|create/batch/list tokens| TokenAPI[Token API]
     AdminUI -->|batch QR ZIP| QRService[QR Service]
     TokenAPI -->|batch create| QRService
-    
+
     MediaAPI --> ProviderLayer[Provider Abstraction]
     ProviderLayer --> Vimeo[Vimeo Provider]
-    
+
     User[User] -->|token URL from QR| PublicPage[Public Page]
     PublicPage -->|validate token| TokenAPI
     TokenAPI -->|valid| ProviderLayer
@@ -195,7 +195,7 @@ flowchart TD
 
 ## 7. File Structure
 
-```
+```text
 media-access-manager/
 ├── server/
 │   ├── api/
@@ -234,11 +234,11 @@ media-access-manager/
 
 ## 8. Database Schema
 
-| Table     | Columns                                                                                   |
-| --------- | ----------------------------------------------------------------------------------------- |
-| `media`   | id, provider_id, title, provider_config (JSON), created_at                               |
-| `tokens`  | id, token, media_id, batch_id (nullable FK), starts_at, expires_at, usage_limit, usage_count, created_at |
-| `batches` | id, media_id, created_at                                                                  |
+| Table     | Columns                                                                                                        |
+| --------- | -------------------------------------------------------------------------------------------------------------- |
+| `media`   | id, provider_id, title, provider_config (JSON), created_at                                                     |
+| `tokens`  | id, token, media_id, batch_id (nullable FK), name, starts_at, expires_at, usage_limit, usage_count, created_at |
+| `batches` | id, media_id, name, created_at                                                                                 |
 
 ---
 
