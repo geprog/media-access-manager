@@ -1,0 +1,20 @@
+ignoredBuiltDependencies:
+  - core-js
+  - unrs-resolver
+
+minimumReleaseAge: 1440
+
+minimumReleaseAgeExclude:
+  - ioredis@5.10.0
+
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - esbuild
+  - vue-demi
+
+overrides:
+  reka-ui@2.6.0: 2.6.1
+
+strictPeerDependencies: true
+
+trustPolicy: no-downgrade
