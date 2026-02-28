@@ -1,0 +1,20 @@
+build:
+  extends: .node-template
+  script:
+    - pnpm install
+    - pnpm build --preset gitlab_pages
+  artifacts:
+    paths:
+      - ./.output/public
+
+deploy:
+  extends: .node-template
+  needs:
+    - build
+  script:
+    # Adjust the deployment strategy here; e.g., for GitLab Pages:
+    - mv ./.output/public public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  pages:
+    publish: public
