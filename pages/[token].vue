@@ -56,11 +56,9 @@ onMounted(async () => {
     return;
   }
   try {
-    const [result, themeData] = await Promise.all([
+    const [result] = await Promise.all([
       $fetch<{ valid: boolean, embed?: unknown }>(`/api/access/${encodeURIComponent(token.value)}`),
-      $fetch<{ companyLogo: string, companyName: string }>('/api/theme'),
     ]);
-    theme.value = themeData;
     valid.value = result.valid;
     if (result.valid && result.embed) {
       embed.value = result.embed as { type: string, html?: string, width?: number, height?: number };

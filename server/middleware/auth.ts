@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
     return;
   if (event.path.startsWith('/api/_auth/'))
     return;
-  if (event.path.startsWith('/api/access/') || event.path.startsWith('/api/theme'))
+  if (event.path.startsWith('/api/access/'))
     return;
   if (event.path.startsWith('/api/')) {
     await requireUserSession(event);
