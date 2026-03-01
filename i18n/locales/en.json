@@ -23,6 +23,7 @@
   "tokens_name": "Name",
   "tokens_usage": "Usage",
   "tokens_expires": "Expires",
+  "tokens_open_link": "Open link",
   "tokens_download_qr_zip": "Download QR Codes (ZIP)",
   "token_name": "Token name",
   "token_name_placeholder": "e.g. Event Ticket",

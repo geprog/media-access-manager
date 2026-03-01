@@ -1,12 +1,17 @@
 import { getViewableContent } from '../../services/mediaService';
-import { validateAndConsumeToken } from '../../services/tokenService';
+import { validateAndConsumeToken, validateToken } from '../../services/tokenService';
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token');
   if (!token) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
-  const tokenRow = await validateAndConsumeToken(token);
+  const session = await getUserSession(event);
+  const user = session?.user as { role?: string } | undefined;
+  const isAdmin = user?.role === 'admin';
+  const tokenRow = isAdmin
+    ? await validateToken(token)
+    : await validateAndConsumeToken(token);
   if (!tokenRow) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }

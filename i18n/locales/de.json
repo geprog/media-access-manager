@@ -23,6 +23,7 @@
   "tokens_name": "Name",
   "tokens_usage": "Nutzung",
   "tokens_expires": "Läuft ab",
+  "tokens_open_link": "Link öffnen",
   "tokens_download_qr_zip": "QR-Codes herunterladen (ZIP)",
   "token_name": "Token-Name",
   "token_name_placeholder": "z.B. Event-Ticket",

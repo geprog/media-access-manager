@@ -83,7 +83,7 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
-import { h } from 'vue';
+import { h, resolveComponent } from 'vue';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -130,6 +130,19 @@ const tokenColumns: TableColumn<TokenRow>[] = [
     id: 'expires',
     header: t('tokens_expires'),
     cell: ({ row }) => row.original.expiresAt ? formatDate(row.original.expiresAt) : '—',
+  },
+  {
+    id: 'actions',
+    header: '',
+    cell: ({ row }) => {
+      const token = row.original.token;
+      return h('a', {
+        href: `/${encodeURIComponent(token)}`,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        class: 'inline-flex items-center gap-1 text-sm text-primary hover:underline',
+      }, [h(resolveComponent('UIcon') as any, { name: 'i-heroicons-arrow-top-right-on-square', class: 'size-4' }), t('tokens_open_link')]);
+    },
   },
 ];
 

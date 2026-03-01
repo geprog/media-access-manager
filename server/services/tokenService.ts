@@ -21,9 +21,18 @@ export async function findTokenByValue(tokenValue: string) {
   return rows[0] ?? null;
 }
 
-export async function validateAndConsumeToken(tokenValue: string): Promise<Token | null> {
+/** Validates token without incrementing usage. Use for admin preview. */
+export async function validateToken(tokenValue: string): Promise<Token | null> {
   const tokenRow = await findTokenByValue(tokenValue);
   if (!tokenRow || !isTokenValid(tokenRow)) {
+    return null;
+  }
+  return tokenRow;
+}
+
+export async function validateAndConsumeToken(tokenValue: string): Promise<Token | null> {
+  const tokenRow = await validateToken(tokenValue);
+  if (!tokenRow) {
     return null;
   }
   const db = useDb();
