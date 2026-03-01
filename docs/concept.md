@@ -247,7 +247,7 @@ media-access-manager/
 - **Batch creation**: Admin selects media, sets count (e.g. 50–500), expiration/usage limits; API creates tokens in bulk.
 - **Batch tracking**: `batches` table and `batch_id` FK on tokens; when creating a batch, create one batch row, then N token rows with `batch_id` set.
 - **QR service**: Generate QR codes with `https://{APP_URL}/{token}`; PNG/SVG; configurable size.
-- **ZIP download**: `GET /api/tokens/batch/:batchId/qr-zip` returns a ZIP of all QR images for the batch.
+- **ZIP download**: `GET /api/batches/:batchId/qr-zip` returns a ZIP of all QR images for the batch.
 - **Flow**: Configure batch → POST creates tokens → Download ZIP of QR codes for printing.
 
 ---

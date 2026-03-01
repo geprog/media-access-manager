@@ -13,7 +13,7 @@
             {{ title }}
           </NuxtLink>
         </div>
-        <div class="flex items-center gap-2">
+        <div v-if="!loggedIn" class="flex items-center gap-2">
           <span class="text-sm text-gray-500 dark:text-gray-400">
             {{ $t('media_list_title') }}
           </span>
@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 const router = useRouter();
-const { clear } = useUserSession();
+const { clear, loggedIn } = useUserSession();
 const { title, logo } = useRuntimeConfig().public;
 
 async function handleLogout() {

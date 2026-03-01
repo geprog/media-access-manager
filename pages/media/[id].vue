@@ -20,24 +20,13 @@
           </h2>
           <div class="flex gap-4 mb-4">
             <UButton
-              :label="$t('tokens_create')"
-              @click="showCreateModal = true"
-            />
-            <UButton
-              :label="$t('tokens_create_batch')"
+              :label="$t('create_new_tokens')"
               variant="outline"
               @click="showBatchModal = true"
             />
           </div>
-          <BatchTokensTable
-            :media-id="id"
-            :columns="tokenColumns"
-          />
         </div>
         <div v-if="batches && batches.length > 0">
-          <h2 class="mb-4 text-lg font-semibold">
-            {{ $t('batches_title') }}
-          </h2>
           <UAccordion
             type="multiple"
             :items="batchAccordionItems"
@@ -48,7 +37,7 @@
                   <UButton
                     :label="$t('tokens_download_qr_zip')"
                     size="sm"
-                    :href="`/api/tokens/batch/${item.value}/qr-zip`"
+                    :href="`/api/batches/${item.value}/qr-zip`"
                     target="_blank"
                   />
                 </div>
@@ -63,29 +52,11 @@
       </div>
     </UCard>
 
-    <UModal v-model:open="showCreateModal">
-      <template #content>
-        <UCard>
-          <template #header>
-            {{ $t('tokens_create') }}
-          </template>
-          <form @submit.prevent="handleCreateToken">
-            <UFormField :label="$t('token_name')">
-              <UInput v-model="tokenForm.name" :placeholder="$t('token_name_placeholder')" required />
-            </UFormField>
-            <UButton type="submit" class="mt-4">
-              {{ $t('tokens_create') }}
-            </UButton>
-          </form>
-        </UCard>
-      </template>
-    </UModal>
-
     <UModal v-model:open="showBatchModal">
       <template #content>
         <UCard>
           <template #header>
-            {{ $t('tokens_create_batch') }}
+            {{ $t('create_new_tokens') }}
           </template>
           <form @submit.prevent="handleCreateBatch">
             <UFormField :label="$t('batch_name')">
@@ -94,14 +65,14 @@
             <UFormField :label="$t('batch_count')">
               <UInput v-model.number="batchForm.count" type="number" min="1" max="500" :placeholder="$t('batch_count_placeholder')" />
             </UFormField>
-            <UFormField :label="$t('batch_usage_limit')">
+            <UFormField :label="$t('token_usage_limit')">
               <UInput v-model.number="batchForm.usageLimit" type="number" min="1" />
             </UFormField>
-            <UFormField :label="$t('batch_expires_at')">
+            <UFormField :label="$t('token_expires_at')">
               <UInput v-model="batchForm.expiresAt" type="datetime-local" />
             </UFormField>
             <UButton type="submit" class="mt-4">
-              {{ $t('tokens_create_batch') }}
+              {{ $t('create_new_tokens') }}
             </UButton>
           </form>
         </UCard>
@@ -121,10 +92,8 @@ interface TokenRow { token: string, name: string, usageCount: number, usageLimit
 
 const id = computed(() => route.params.id as string);
 const { data: media } = useFetch(`/api/media/${id.value}`);
-const { data: batches } = useFetch(`/api/batches?mediaId=${id.value}`);
-const showCreateModal = ref(false);
+const { data: batches, refresh: refreshBatches } = useFetch(`/api/batches?mediaId=${id.value}`);
 const showBatchModal = ref(false);
-const tokenForm = ref({ name: '' });
 const batchForm = ref({ name: '', count: 50, usageLimit: null as number | null, expiresAt: '' });
 
 const batchAccordionItems = computed(() =>
@@ -164,17 +133,6 @@ const tokenColumns: TableColumn<TokenRow>[] = [
   },
 ];
 
-async function handleCreateToken() {
-  if (!tokenForm.value.name.trim())
-    return;
-  await $fetch('/api/tokens', {
-    method: 'POST',
-    body: { mediaId: id.value, name: tokenForm.value.name.trim() },
-  });
-  showCreateModal.value = false;
-  tokenForm.value.name = '';
-}
-
 async function handleCreateBatch() {
   if (!batchForm.value.name.trim())
     return;
@@ -187,11 +145,12 @@ async function handleCreateBatch() {
     body.usageLimit = batchForm.value.usageLimit;
   if (batchForm.value.expiresAt)
     body.expiresAt = batchForm.value.expiresAt;
-  await $fetch('/api/tokens/batch', {
+  await $fetch('/api/batches', {
     method: 'POST',
     body,
   });
   showBatchModal.value = false;
   batchForm.value = { name: '', count: 50, usageLimit: null, expiresAt: '' };
+  await refreshBatches();
 }
 </script>

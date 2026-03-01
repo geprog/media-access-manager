@@ -4,15 +4,15 @@ import { validateAndConsumeToken } from '../../services/tokenService';
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token');
   if (!token) {
-    return { valid: false, message: 'invalid' };
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
   const tokenRow = await validateAndConsumeToken(token);
   if (!tokenRow) {
-    return { valid: false, message: 'invalid' };
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
   const embed = await getViewableContent(tokenRow.mediaId);
   if (!embed) {
-    return { valid: false, message: 'invalid' };
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
-  return { valid: true, embed };
+  return embed;
 });

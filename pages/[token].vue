@@ -6,30 +6,21 @@
         {{ $t('public_loading') }}
       </p>
     </div>
-    <div v-else-if="!valid" class="max-w-md text-center">
+    <div v-else-if="!mediaAccess" class="max-w-md text-center">
       <UIcon name="i-heroicons-exclamation-triangle" class="mx-auto h-16 w-16 text-amber-500" />
       <h1 class="mt-4 text-xl font-semibold">
         {{ $t('public_invalid_token') }}
       </h1>
     </div>
-    <div v-else-if="embed" class="w-full max-w-4xl">
-      <header class="mb-6 flex items-center justify-center gap-4">
-        <img
-          v-if="theme.companyLogo"
-          :src="theme.companyLogo"
-          :alt="theme.companyName"
-          class="h-10 object-contain"
-        >
-        <span class="text-lg font-semibold">{{ theme.companyName }}</span>
-      </header>
+    <div v-else class="w-full max-w-4xl">
       <div
-        v-if="embed.type === 'video' || embed.type === 'rich'"
+        v-if="mediaAccess.type === 'video' || mediaAccess.type === 'rich'"
         class="relative w-full overflow-hidden rounded-lg bg-black"
-        :style="{ paddingBottom: embed.type === 'video' && embed.width && embed.height ? `${(embed.height / embed.width) * 100}%` : '56.25%' }"
+        :style="{ paddingBottom: mediaAccess.type === 'video' && mediaAccess.width && mediaAccess.height ? `${(mediaAccess.height / mediaAccess.width) * 100}%` : '56.25%' }"
       >
         <div
           class="absolute inset-0"
-          v-html="(embed as { html: string }).html"
+          v-html="mediaAccess.html"
         />
       </div>
     </div>
@@ -40,35 +31,8 @@
 const route = useRoute();
 
 const token = computed(() => route.params.token as string);
-const loading = ref(true);
-const valid = ref(false);
-const embed = ref<{ type: string, html?: string, width?: number, height?: number } | null>(null);
-const theme = ref({ companyLogo: '', companyName: '' });
 
-definePageMeta({
-  layout: false,
-});
+const { data: mediaAccess, status: mediaAccessStatus } = useFetch(`/api/access/${encodeURIComponent(token.value)}`);
 
-onMounted(async () => {
-  if (!token.value || token.value === 'login' || token.value === 'media') {
-    valid.value = false;
-    loading.value = false;
-    return;
-  }
-  try {
-    const [result] = await Promise.all([
-      $fetch<{ valid: boolean, embed?: unknown }>(`/api/access/${encodeURIComponent(token.value)}`),
-    ]);
-    valid.value = result.valid;
-    if (result.valid && result.embed) {
-      embed.value = result.embed as { type: string, html?: string, width?: number, height?: number };
-    }
-  }
-  catch {
-    valid.value = false;
-  }
-  finally {
-    loading.value = false;
-  }
-});
+const loading = computed(() => mediaAccessStatus.value === 'pending');
 </script>

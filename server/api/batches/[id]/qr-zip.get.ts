@@ -1,5 +1,5 @@
-import { createQRZipArchive } from '../../../../services/qrService';
-import { findBatchById, listTokensByBatchId } from '../../../../services/tokenService';
+import { createQRZipArchive } from '../../../services/qrService';
+import { findBatchById, listTokensByBatchId } from '../../../services/tokenService';
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id');
