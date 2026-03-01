@@ -8,6 +8,7 @@
   "login_error": "Invalid password",
   "logout": "Log out",
   "media_list_title": "Media",
+  "back_to_media_list": "Back to media list",
   "media_add": "Add Media",
   "media_empty": "No media yet. Add media to get started.",
   "media_title": "Title",

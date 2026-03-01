@@ -1,11 +1,11 @@
 <template>
-  <div class="mx-auto max-w-6xl">
+  <div class="mx-auto max-w-6xl flex flex-col">
     <UButton
-      variant="ghost"
-      class="mb-4"
+      variant="outline"
+      class="mb-4 mx-auto"
       to="/"
     >
-      ← {{ $t('media_list_title') }}
+      {{ $t('back_to_media_list') }}
     </UButton>
     <UCard v-if="media">
       <template #header>

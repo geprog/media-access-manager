@@ -8,6 +8,7 @@
   "login_error": "Ungültiges Passwort",
   "logout": "Abmelden",
   "media_list_title": "Medien",
+  "back_to_media_list": "Zurück zur Medienliste",
   "media_add": "Medium hinzufügen",
   "media_empty": "Noch keine Medien. Fügen Sie Medien hinzu, um zu beginnen.",
   "media_title": "Titel",

@@ -1,30 +1,20 @@
 <template>
   <div class="flex min-h-screen flex-col">
-    <header class="border-b border-gray-200 dark:border-gray-800">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <div class="flex items-center gap-4">
+    <UNavigationMenu :items="items" :ui="{ root: 'px-2 border-b dark:border-b-gray-800' }">
+      <template #list-leading>
+        <div class="flex items-center gap-2">
           <img
             v-if="logo"
             :src="logo"
             :alt="title"
             class="h-8 object-contain"
           >
-          <NuxtLink to="/" class="text-lg font-semibold">
+          <span class="text-lg font-semibold">
             {{ title }}
-          </NuxtLink>
-        </div>
-        <div v-if="!loggedIn" class="flex items-center gap-2">
-          <span class="text-sm text-gray-500 dark:text-gray-400">
-            {{ $t('media_list_title') }}
           </span>
-          <UButton
-            variant="ghost"
-            :label="$t('logout')"
-            @click="handleLogout"
-          />
         </div>
-      </div>
-    </header>
+      </template>
+    </UNavigationMenu>
     <main class="flex-1 p-4">
       <slot />
     </main>
@@ -32,12 +22,34 @@
 </template>
 
 <script setup lang="ts">
-const router = useRouter();
-const { clear, loggedIn } = useUserSession();
+import type { NavigationMenuItem } from '@nuxt/ui';
+
+const { loggedIn } = useUserSession();
 const { title, logo } = useRuntimeConfig().public;
 
-async function handleLogout() {
-  await clear();
-  await router.push('/login');
-}
+const route = useRoute();
+const { t } = useI18n();
+const path = computed(() => route.path);
+
+const items = computed<NavigationMenuItem[]>(() => [
+  [
+    {
+      label: t('media_list_title'),
+      icon: 'i-heroicons-home',
+      to: '/',
+      active: path.value.startsWith('/'),
+    },
+  ],
+  [
+    ...(loggedIn.value
+      ? [
+          {
+            label: t('logout'),
+            icon: 'i-heroicons-arrow-right-on-rectangle',
+            to: '/auth/logout/',
+          },
+        ]
+      : []),
+  ],
+]);
 </script>
