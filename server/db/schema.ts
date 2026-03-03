@@ -1,18 +1,26 @@
+import { sql } from 'drizzle-orm';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export interface ProviderConfig<Provider extends string> {
+  providerId: Provider
+}
+
+export interface VimeoConfig extends ProviderConfig<'vimeo'> {
+  videoId: string
+}
 
 export const media = sqliteTable('media', {
   id: text('id').primaryKey(),
-  providerId: text('provider_id').notNull(),
   title: text('title').notNull(),
-  providerConfig: text('provider_config', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  providerConfig: text('provider_config', { mode: 'json' }).$type<VimeoConfig>().notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const batches = sqliteTable('batches', {
   id: text('id').primaryKey(),
   mediaId: text('media_id').notNull().references(() => media.id),
   name: text('name').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const tokens = sqliteTable('tokens', {
@@ -25,7 +33,7 @@ export const tokens = sqliteTable('tokens', {
   expiresAt: integer('expires_at', { mode: 'timestamp' }),
   usageLimit: integer('usage_limit'),
   usageCount: integer('usage_count').notNull().default(0),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export type Media = typeof media.$inferSelect;

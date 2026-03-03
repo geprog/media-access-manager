@@ -92,9 +92,8 @@ interface MediaProvider {
 
 interface MediaItem {
   id: string
-  providerId: string
   title: string
-  providerConfig: Record<string, unknown> // e.g. { vimeoId, encryptedPassword }
+  providerConfig: VimeoConfig | YoutubeConfig | FileserverConfig
 }
 ```
 
@@ -128,7 +127,7 @@ interface MediaItem {
 ## 3. Admin: Single Global Password
 
 - **No users table**; replace with:
-  - Single password in config/env (e.g. `ADMIN_PASSWORD`)
+  - Single password in config/env (e.g. `NUXT_ADMIN_PASSWORD`)
   - Session/cookie after successful login
 - **Admin capabilities**:
   - List media (from all providers)
@@ -279,7 +278,7 @@ media-access-manager/
 
 ```env
 # Admin
-ADMIN_PASSWORD=...           # Hashed or plain (bcrypt recommended)
+NUXT_ADMIN_PASSWORD=...           # Hashed or plain (bcrypt recommended)
 
 # Media providers (Vimeo)
 VIMEO_API_TOKEN=...

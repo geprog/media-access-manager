@@ -1,3 +1,5 @@
+import type { ProviderConfig } from '~/server/db/schema';
+
 export interface OEmbedBase {
   type: 'photo' | 'video' | 'link' | 'rich'
   version: string
@@ -46,8 +48,8 @@ export interface MediaItem {
   providerConfig: Record<string, unknown>
 }
 
-export interface MediaProvider {
+export interface MediaProvider<Config extends ProviderConfig<string>> {
   id: string
   listMedia: () => Promise<MediaItem[]>
-  getViewableContent: (mediaId: string, providerConfig: Record<string, unknown>) => Promise<OEmbedResponse>
+  getViewableContent: (providerConfig: Config) => Promise<OEmbedResponse>
 }

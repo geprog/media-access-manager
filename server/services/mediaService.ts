@@ -1,15 +1,16 @@
+import type { MediaInsert } from '../db/schema';
 import type { MediaProvider } from './providers/types';
 import { eq } from 'drizzle-orm';
 import { media } from '../db/schema';
 import { useDb } from '../utils/db';
 import { createVimeoProvider } from './providers/vimeo';
 
-const providers = new Map<string, MediaProvider>();
+const providers = new Map<string, MediaProvider<any>>();
 
-function getProviders(): Map<string, MediaProvider> {
+function getProviders(): Map<string, MediaProvider<any>> {
   if (providers.size === 0) {
     const config = useRuntimeConfig();
-    const vimeo = createVimeoProvider(config.vimeoApiToken as string | undefined);
+    const vimeo = createVimeoProvider(config.vimeoApiToken);
     providers.set('vimeo', vimeo);
   }
   return providers;
@@ -26,16 +27,10 @@ export async function getMediaById(id: string) {
   return rows[0] ?? null;
 }
 
-export async function createMedia(data: {
-  id: string
-  providerId: string
-  title: string
-  providerConfig: Record<string, unknown>
-}) {
+export async function createMedia(data: MediaInsert) {
   const db = useDb();
   await db.insert(media).values({
     id: data.id,
-    providerId: data.providerId,
     title: data.title,
     providerConfig: data.providerConfig,
     createdAt: new Date(),
@@ -56,11 +51,9 @@ export async function getViewableContent(mediaId: string) {
   if (!mediaRow) {
     return null;
   }
-  const prov = getProviders().get(mediaRow.providerId);
+  const prov = getProviders().get(mediaRow.providerConfig.providerId);
   if (!prov) {
     return null;
   }
-  const providerConfig = mediaRow.providerConfig as Record<string, unknown>;
-  const vimeoId = providerConfig?.vimeoId ?? mediaId;
-  return prov.getViewableContent(vimeoId as string, providerConfig);
+  return prov.getViewableContent(mediaRow.providerConfig);
 }

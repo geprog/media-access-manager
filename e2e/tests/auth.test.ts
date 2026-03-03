@@ -15,7 +15,7 @@ test.describe('Admin Auth', () => {
 
   test('login and access media list with valid password', async ({ page }) => {
     await page.goto('/');
-    await page.fill('input[type="password"]', process.env.ADMIN_PASSWORD ?? 'test');
+    await page.fill('input[type="password"]', process.env.NUXT_ADMIN_PASSWORD ?? 'password');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL('/', { timeout: 5000 });
     await expect(page.getByRole('heading', { name: 'Media', exact: true })).toBeVisible();

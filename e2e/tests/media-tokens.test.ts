@@ -1,8 +1,9 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from '@nuxt/test-utils/playwright';
 
-async function login(page: import('@playwright/test').Page) {
+async function login(page: Page) {
   await page.goto('/');
-  await page.fill('input[type="password"]', process.env.ADMIN_PASSWORD ?? 'test');
+  await page.fill('input[type="password"]', process.env.NUXT_ADMIN_PASSWORD ?? 'password');
   await page.click('button[type="submit"]');
   await expect(page).toHaveURL('/', { timeout: 5000 });
 }
@@ -11,135 +12,76 @@ function uniqueId(prefix: string) {
   return `${prefix}-${Date.now()}`;
 }
 
+async function addMediaViaUI(
+  page: Page,
+  title: string,
+  videoId = '1234567890',
+) {
+  await page.getByRole('button', { name: 'Add Media' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Title').fill(title);
+  await dialog.getByLabel('Video ID').fill(videoId);
+  await dialog.getByRole('button', { name: 'Add Media' }).click();
+  await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible({ timeout: 10000 });
+}
+
+async function createTokenViaUI(
+  page: Page,
+  batchName: string,
+  count = 1,
+): Promise<string> {
+  await page.getByRole('button', { name: 'Create new Tokens' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Batch name').fill(batchName);
+  await dialog.getByLabel('Count').fill(String(count));
+  await dialog.getByRole('button', { name: 'Create new Tokens' }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
+  const batchButton = page.getByRole('button').filter({ hasText: batchName });
+  await batchButton.click();
+  const tokenCell = page.locator('code').first();
+  await expect(tokenCell).toBeVisible({ timeout: 10000 });
+  return await tokenCell.textContent() ?? '';
+}
+
 test.describe('Media and Tokens', () => {
-  test('add media', async ({ page }) => {
+  test('add media', async ({ page }, testInfo) => {
     await login(page);
 
-    const mediaId = uniqueId('e2e-add');
-    const title = `E2E Test Video ${Date.now()}`;
-    const baseUrl = new URL(page.url()).origin;
-    await page.evaluate(
-      async ({ url, id, t }: { url: string, id: string, t: string }) => {
-        const res = await fetch(`${url}/api/media`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id,
-            title: t,
-            providerId: 'vimeo',
-            providerConfig: {},
-          }),
-          credentials: 'include',
-        });
-        if (!res.ok)
-          throw new Error(`media creation failed: ${res.status}`);
-      },
-      { url: baseUrl, id: mediaId, t: title },
-    );
-    await page.reload();
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
 
     const row = page.getByRole('row').filter({ hasText: title });
     await expect(row.getByText(title)).toBeVisible({ timeout: 5000 });
     await expect(row.getByText('vimeo')).toBeVisible();
   });
 
-  test('generate token for media', async ({ page }) => {
+  test('generate token for media', async ({ page }, testInfo) => {
     await login(page);
 
-    const mediaId = uniqueId('e2e-token');
-    const title = `Token Test Video ${Date.now()}`;
-    const baseUrl = new URL(page.url()).origin;
-    await page.evaluate(
-      async ({ url, id, t }: { url: string, id: string, t: string }) => {
-        const res = await fetch(`${url}/api/media`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id,
-            title: t,
-            providerId: 'vimeo',
-            providerConfig: {},
-          }),
-          credentials: 'include',
-        });
-        if (!res.ok)
-          throw new Error(`media creation failed: ${res.status}`);
-      },
-      { url: baseUrl, id: mediaId, t: title },
-    );
-    await page.reload();
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
 
     await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
-    await expect(page).toHaveURL(new RegExp(`/media/${mediaId}`));
+    await expect(page).toHaveURL(/\/media\/[^/]+/);
 
-    const { token } = await page.evaluate(
-      async ({ url, id }: { url: string, id: string }) => {
-        const res = await fetch(`${url}/api/tokens`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaId: id, name: 'E2E Test Token' }),
-          credentials: 'include',
-        });
-        const data = (await res.json()) as { token?: string };
-        if (!data?.token)
-          throw new Error(`token creation failed: ${res.status}`);
-        return { token: data.token };
-      },
-      { url: baseUrl, id: mediaId },
-    );
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1);
 
-    await page.reload();
     await expect(page.getByText(/No tokens yet/)).not.toBeVisible({ timeout: 3000 });
-    const tokenCell = page.locator('code').first();
-    await expect(tokenCell).toBeVisible();
     expect(token).toBeTruthy();
     expect(token.length).toBe(32);
   });
 
-  test('use token to see media', async ({ page }) => {
+  test('use token to see media', async ({ page }, testInfo) => {
     await login(page);
 
-    const mediaId = uniqueId('e2e-access');
-    const title = `Access Test Video ${Date.now()}`;
-    const baseUrl = new URL(page.url()).origin;
-    await page.evaluate(
-      async ({ url, id, t }: { url: string, id: string, t: string }) => {
-        const res = await fetch(`${url}/api/media`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id,
-            title: t,
-            providerId: 'vimeo',
-            providerConfig: {},
-          }),
-          credentials: 'include',
-        });
-        if (!res.ok)
-          throw new Error(`media creation failed: ${res.status}`);
-      },
-      { url: baseUrl, id: mediaId, t: title },
-    );
-    await page.reload();
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
 
     await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
 
-    const { token } = await page.evaluate(
-      async ({ url, id }: { url: string, id: string }) => {
-        const res = await fetch(`${url}/api/tokens`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaId: id, name: 'E2E Test Token' }),
-          credentials: 'include',
-        });
-        const data = (await res.json()) as { token?: string };
-        if (!data?.token)
-          throw new Error(`token creation failed: ${res.status}`);
-        return { token: data.token };
-      },
-      { url: baseUrl, id: mediaId },
-    );
-
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1);
     expect(token).toBeTruthy();
 
     const mockEmbed = {
@@ -154,14 +96,13 @@ test.describe('Media and Tokens', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ valid: true, embed: mockEmbed }),
+        body: JSON.stringify(mockEmbed),
       });
     });
 
     await page.goto(`/${token}`);
 
     await expect(page.getByText(/no longer valid|contact the administrator/i)).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('banner')).toBeVisible();
     await expect(page.locator('iframe[title="E2E Mock Video"]')).toBeVisible();
   });
 });

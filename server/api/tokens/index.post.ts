@@ -4,7 +4,6 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{
     mediaId?: string
     name?: string
-    batchId?: string
     startsAt?: string
     expiresAt?: string
     usageLimit?: number
@@ -15,8 +14,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
   const options: Parameters<typeof createToken>[0] = { mediaId, name };
-  if (body?.batchId)
-    options.batchId = body.batchId;
   if (body?.startsAt)
     options.startsAt = new Date(body.startsAt);
   if (body?.expiresAt)

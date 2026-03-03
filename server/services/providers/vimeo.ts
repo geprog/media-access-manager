@@ -1,7 +1,8 @@
 import type { MediaItem, MediaProvider, OEmbedResponse } from './types';
+import type { VimeoConfig } from '~/server/db/schema';
 import { extract } from '@extractus/oembed-extractor';
 
-export function createVimeoProvider(apiToken?: string): MediaProvider {
+export function createVimeoProvider(apiToken?: string): MediaProvider<VimeoConfig> {
   return {
     id: 'vimeo',
 
@@ -30,10 +31,9 @@ export function createVimeoProvider(apiToken?: string): MediaProvider {
     },
 
     async getViewableContent(
-      mediaId: string,
-      _providerConfig: Record<string, unknown>,
+      providerConfig: VimeoConfig,
     ): Promise<OEmbedResponse> {
-      const url = `https://vimeo.com/${mediaId}`;
+      const url = `https://vimeo.com/${providerConfig.videoId}`;
       const result = await extract(url, {
         maxwidth: 1280,
         maxheight: 720,

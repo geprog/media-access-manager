@@ -6,12 +6,12 @@
       </h1>
       <UButton
         :label="$t('media_add')"
-        @click="showAddModal = true"
+        @click="openAddModal"
       />
     </div>
     <UCard v-if="media && media.length > 0">
       <UTable
-        :data="media"
+        :data="media ?? []"
         :columns="columns"
       />
     </UCard>
@@ -29,23 +29,25 @@
               {{ $t('media_add') }}
             </h2>
           </template>
-          <form @submit.prevent="handleAddMedia">
+          <UForm class="flex flex-col gap-6" @submit.prevent="handleAddMedia">
             <UFormField :label="$t('media_title')">
-              <UInput v-model="addForm.title" required />
-            </UFormField>
-            <UFormField label="Media ID (e.g. Vimeo video ID)">
-              <UInput v-model="addForm.id" required placeholder="123456789" />
+              <UInput v-model="addMediaData.title" required />
             </UFormField>
             <UFormField :label="$t('media_provider')">
               <USelect
-                v-model="addForm.providerId"
+                v-model="addMediaData.providerConfig.providerId"
                 :items="[{ label: 'Vimeo', value: 'vimeo' }]"
               />
             </UFormField>
+            <template v-if="addMediaData.providerConfig.providerId === 'vimeo'">
+              <UFormField label="Video ID">
+                <UInput v-model="addMediaData.providerConfig.videoId" required placeholder="123456789" />
+              </UFormField>
+            </template>
             <UButton type="submit" class="mt-4">
               {{ $t('media_add') }}
             </UButton>
-          </form>
+          </UForm>
         </UCard>
       </template>
     </UModal>
@@ -54,29 +56,40 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
+import type { Media, MediaInsert } from '~/server/db/schema';
 import { h, resolveComponent } from 'vue';
 
 const UButton = resolveComponent('UButton');
 const UBadge = resolveComponent('UBadge');
 const { t } = useI18n();
 
-interface MediaRow { id: string, title: string, providerId: string }
-
 const { data: media, refresh: refreshMedia } = useFetch('/api/media');
 
 const showAddModal = ref(false);
-const addForm = ref({
+const addMediaData = ref<MediaInsert>({
   id: '',
   title: '',
-  providerId: 'vimeo',
+  providerConfig: { providerId: 'vimeo', videoId: '' },
 });
 
-const columns: TableColumn<MediaRow>[] = [
+function openAddModal() {
+  showAddModal.value = true;
+  addMediaData.value = {
+    id: '',
+    title: '',
+    providerConfig: { providerId: 'vimeo', videoId: '' },
+  };
+}
+
+const columns: TableColumn<Omit<Media, 'createdAt'>>[] = [
   { accessorKey: 'title', header: t('media_title') },
   {
-    accessorKey: 'providerId',
+    id: 'providerId',
+    accessorFn: row => row.providerConfig.providerId,
     header: t('media_provider'),
-    cell: ({ row }) => h(UBadge, { label: row.getValue('providerId'), variant: 'subtle' }),
+    cell: ({ getValue }) => {
+      return h(UBadge, { label: getValue(), variant: 'subtle' });
+    },
   },
   {
     id: 'actions',
@@ -93,15 +106,9 @@ const columns: TableColumn<MediaRow>[] = [
 async function handleAddMedia() {
   await $fetch('/api/media', {
     method: 'POST',
-    body: {
-      id: addForm.value.id,
-      title: addForm.value.title,
-      providerId: addForm.value.providerId,
-      providerConfig: { vimeoId: addForm.value.id },
-    },
+    body: addMediaData.value,
   });
   showAddModal.value = false;
-  addForm.value = { id: '', title: '', providerId: 'vimeo' };
   await refreshMedia();
 }
 </script>

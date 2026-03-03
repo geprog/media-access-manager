@@ -1,3 +1,5 @@
+import type { Token } from '../db/schema';
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
@@ -21,4 +23,8 @@ export function useDb() {
     migrate(db, { migrationsFolder });
   }
   return db;
+}
+
+export function generateId(): string {
+  return randomBytes(12).toString('hex');
 }

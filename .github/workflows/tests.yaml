@@ -88,7 +88,7 @@ jobs:
       - name: Run Playwright tests
         run: pnpm test:e2e
         env:
-          ADMIN_PASSWORD: test
+          NUXT_ADMIN_PASSWORD: test
 
       - name: Upload Playwright Test Report
         if: always()

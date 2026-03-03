@@ -7,7 +7,7 @@ export default defineNuxtConfig({
   telemetry: false,
   ssr: false,
   runtimeConfig: {
-    adminPassword: '',
+    adminPassword: 'password',
     vimeoApiToken: '',
     public: {
       title: 'Media Access Manager',
@@ -16,15 +16,7 @@ export default defineNuxtConfig({
     },
     session: {
       name: 'mam-session',
-      password: '',
-    },
-  },
-  $development: {
-    runtimeConfig: {
-      adminPassword: 'password',
-      session: {
-        password: 'my-secret-password-with-min-32-characters',
-      },
+      password: 'my-secret-password-with-min-32-characters',
     },
   },
   modules: ['@nuxt/ui', '@nuxtjs/i18n', 'nuxt-auth-utils'],

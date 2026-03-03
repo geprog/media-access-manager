@@ -2,17 +2,13 @@ import type { Token } from '../db/schema';
 import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { batches, tokens } from '../db/schema';
-import { useDb } from '../utils/db';
+import { generateId, useDb } from '../utils/db';
 import { isTokenValid } from '../utils/tokenValidation';
 
 export { isTokenValid };
 
 function generateTokenString(): string {
   return randomBytes(16).toString('hex');
-}
-
-function generateId(): string {
-  return randomBytes(12).toString('hex');
 }
 
 export async function findTokenByValue(tokenValue: string) {
@@ -54,7 +50,6 @@ export async function createToken(data: {
   const db = useDb();
   const id = generateId();
   const token = generateTokenString();
-  const now = new Date();
   await db.insert(tokens).values({
     id,
     token,
@@ -65,7 +60,7 @@ export async function createToken(data: {
     expiresAt: data.expiresAt ?? null,
     usageLimit: data.usageLimit ?? null,
     usageCount: 0,
-    createdAt: now,
+    createdAt: new Date(),
   });
   return { id, token, mediaId: data.mediaId };
 }
