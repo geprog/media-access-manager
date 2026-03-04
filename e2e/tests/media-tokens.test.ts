@@ -102,7 +102,7 @@ test.describe('Media and Tokens', () => {
 
     await page.goto(`/${token}`);
 
-    await expect(page.getByText(/no longer valid|contact the administrator/i)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/no longer valid|contact support/i)).not.toBeVisible({ timeout: 5000 });
     await expect(page.locator('iframe[title="E2E Mock Video"]')).toBeVisible();
   });
 });

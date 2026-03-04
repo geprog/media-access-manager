@@ -2,7 +2,7 @@
 
 ## Overview
 
-A simplified Nuxt.js webapp for managing token-based access to media from different providers. Admins use a single global password to manage media and generate access tokens (single or batch). Batch tokens can be exported as QR codes in a ZIP for printing. End users access media via token URLs; invalid tokens show a "contact admin" message. The app is white-labelable (primary color, logo, company name).
+A simplified Nuxt.js webapp for managing token-based access to media from different providers. Admins use a single global password to manage media and generate access tokens (single or batch). Batch tokens can be exported as QR codes in a ZIP for printing. End users access media via token URLs; invalid tokens show a "contact support" message. The app is white-labelable (primary color, logo, company name).
 
 ---
 
@@ -120,7 +120,7 @@ interface MediaItem {
 - If `starts_at` is set and now < `starts_at` → invalid
 - If `expires_at` is set and now > `expires_at` → invalid
 - If `usage_limit` is set and `usage_count >= usage_limit` → invalid
-- If valid: increment `usage_count`, return embed; if invalid: show "Contact admin" message
+- If valid: increment `usage_count`, return embed; if invalid: show "Contact support" message
 
 ---
 
@@ -144,7 +144,7 @@ interface MediaItem {
 
 1. User visits `/{token}` (or similar).
 2. Validate token (dates + usage limit).
-3. If invalid → show message: "This link is no longer valid. Please contact the administrator."
+3. If invalid → show message: "This link is no longer valid. Please contact support."
 4. If valid → fetch embed via provider, increment `usage_count`, render player.
 5. No device tracking, no analytics.
 
@@ -269,7 +269,7 @@ media-access-manager/
 3. **Global admin auth** – Single password, simple session
 4. **QR service** – QR generation (URL → PNG/SVG), batch ZIP
 5. **Admin UI** – Media list, media detail, token create/list, batch generator + QR ZIP download
-6. **Public access page** – Token validation, embed or "Contact admin" message
+6. **Public access page** – Token validation, embed or "Contact support" message
 7. **White-label theming** – Primary color, logo, company name via CSS vars and layout
 
 ---

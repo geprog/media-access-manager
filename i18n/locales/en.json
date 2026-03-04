@@ -50,6 +50,6 @@
   "token_expires_at": "Expires at (optional)",
   "batches_title": "Batches",
   "batches_tokens_count": "tokens",
-  "public_invalid_token": "This link is no longer valid. Please contact the administrator.",
+  "public_invalid_token": "This link is no longer valid. Please contact support.",
   "public_loading": "Loading..."
 }
