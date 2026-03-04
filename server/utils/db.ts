@@ -1,4 +1,3 @@
-import type { Token } from '../db/schema';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';

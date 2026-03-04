@@ -6,6 +6,9 @@ export default defineEventHandler(async (event) => {
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
+  const query = getQuery(event);
+  const sizeCm = Math.min(15, Math.max(2, Number(query.sizeCm) || 5));
+
   const [batch, tokenRows] = await Promise.all([
     findBatchById(id),
     listTokensByBatchId(id),
@@ -16,7 +19,7 @@ export default defineEventHandler(async (event) => {
   const appUrl = getRequestURL(event).origin;
   const tokensWithName = tokenRows.map(t => ({ token: t.token, name: t.name }));
   const batchName = batch?.name ?? '';
-  const archive = await createQRZipArchive(tokensWithName, appUrl, batchName);
+  const archive = await createQRZipArchive(tokensWithName, appUrl, batchName, sizeCm);
   const zipName = batchName
     ? `qr-${batchName.replace(/[^\w-]/g, '_')}-${id}.zip`
     : `batch-${id}-qr.zip`;

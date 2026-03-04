@@ -35,10 +35,9 @@
               <div class="space-y-3 pb-3">
                 <div class="flex justify-end">
                   <UButton
-                    :label="$t('tokens_download_qr_zip')"
+                    :label="$t('qr_export')"
                     size="sm"
-                    :href="`/api/batches/${item.value}/qr-zip`"
-                    target="_blank"
+                    @click="openExportModal(item.value)"
                   />
                 </div>
                 <BatchTokensTable
@@ -51,6 +50,62 @@
         </div>
       </div>
     </UCard>
+
+    <UModal v-model:open="showExportModal" :title="$t('qr_export')">
+      <template #body>
+        <form class="space-y-4" @submit.prevent="handleExportDownload">
+          <UFormField :label="$t('qr_export_format')">
+            <URadioGroup
+              v-model="exportForm.format"
+              :items="exportFormatOptions"
+              variant="list"
+            />
+          </UFormField>
+          <UFormField
+            v-if="exportForm.format === 'pdf-one' || exportForm.format === 'zip'"
+            :label="$t('qr_export_size')"
+            :hint="$t('qr_export_size_hint')"
+          >
+            <UInput
+              v-model.number="exportForm.sizeCm"
+              type="number"
+              min="2"
+              max="15"
+              step="0.5"
+            />
+          </UFormField>
+          <template v-if="exportForm.format === 'pdf-grid'">
+            <UFormField :label="$t('qr_export_grid_cols')" :hint="$t('qr_export_grid_cols_hint')">
+              <UInput
+                v-model.number="exportForm.gridCols"
+                type="number"
+                min="1"
+                max="6"
+              />
+            </UFormField>
+            <UFormField :label="$t('qr_export_grid_rows')" :hint="$t('qr_export_grid_rows_hint')">
+              <UInput
+                v-model.number="exportForm.gridRows"
+                type="number"
+                min="1"
+                max="10"
+              />
+            </UFormField>
+          </template>
+          <div class="flex justify-end gap-2">
+            <UButton
+              variant="outline"
+              @click="showExportModal = false"
+            >
+              {{ $t('cancel') }}
+            </UButton>
+            <UButton type="submit">
+              {{ $t('qr_export_download') }}
+            </UButton>
+          </div>
+        </form>
+      </template>
+    </UModal>
 
     <UModal v-model:open="showBatchModal">
       <template #content>
@@ -94,7 +149,50 @@ const id = computed(() => route.params.id as string);
 const { data: media } = useFetch(`/api/media/${id.value}`);
 const { data: batches, refresh: refreshBatches } = useFetch(`/api/batches?mediaId=${id.value}`);
 const showBatchModal = ref(false);
+const showExportModal = ref(false);
+const exportBatchId = ref<string | null>(null);
 const batchForm = ref({ name: '', count: 50, usageLimit: null as number | null, expiresAt: '' });
+const exportForm = ref({
+  format: 'zip' as 'zip' | 'pdf-one' | 'pdf-grid',
+  sizeCm: 5,
+  gridCols: 3,
+  gridRows: 4,
+});
+
+const exportFormatOptions = computed(() => [
+  { label: t('qr_export_format_zip'), value: 'zip' },
+  { label: t('qr_export_format_pdf_one'), value: 'pdf-one' },
+  { label: t('qr_export_format_pdf_grid'), value: 'pdf-grid' },
+]);
+
+function openExportModal(batchId: string) {
+  exportBatchId.value = batchId;
+  exportForm.value = { format: 'zip', sizeCm: 5, gridCols: 3, gridRows: 4 };
+  showExportModal.value = true;
+}
+
+function handleExportDownload() {
+  const batchId = exportBatchId.value;
+  if (!batchId)
+    return;
+  const { format, sizeCm, gridCols, gridRows } = exportForm.value;
+  let url: string;
+  if (format === 'zip') {
+    const size = Math.min(15, Math.max(2, sizeCm));
+    url = `/api/batches/${batchId}/qr-zip?sizeCm=${size}`;
+  }
+  else if (format === 'pdf-grid') {
+    const cols = Math.min(6, Math.max(1, Math.floor(gridCols)));
+    const rows = Math.min(8, Math.max(1, Math.floor(gridRows)));
+    url = `/api/batches/${batchId}/qr-pdf?layout=grid&cols=${cols}&rows=${rows}`;
+  }
+  else {
+    const size = Math.min(15, Math.max(2, sizeCm));
+    url = `/api/batches/${batchId}/qr-pdf?layout=one-per-page&sizeCm=${size}`;
+  }
+  window.open(url, '_blank');
+  showExportModal.value = false;
+}
 
 const batchAccordionItems = computed(() =>
   batches.value?.map(b => ({

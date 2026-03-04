@@ -31,6 +31,7 @@
     "drizzle-orm": "^0.45.1",
     "nuxt": "4.3.1",
     "nuxt-auth-utils": "^0.5.29",
+    "pdf-lib": "1.17.1",
     "qrcode": "^1.5.4",
     "tailwindcss": "4.2.1"
   },
