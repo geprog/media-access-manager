@@ -36,6 +36,8 @@
   "qr_export_grid_cols_hint": "Anzahl QR-Codes pro Zeile (1–6)",
   "qr_export_grid_rows": "Zeilen pro Seite",
   "qr_export_grid_rows_hint": "Anzahl QR-Codes pro Spalte (1–8)",
+  "qr_export_show_token": "Token unter QR-Code anzeigen",
+  "qr_export_show_token_hint": "Erlaubt manuelle Eingabe oder Weitergabe an den Support",
   "qr_export_download": "Herunterladen",
   "cancel": "Abbrechen",
   "token_name": "Token-Name",

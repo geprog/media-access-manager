@@ -92,6 +92,11 @@
               />
             </UFormField>
           </template>
+          <UCheckbox
+            v-model="exportForm.showToken"
+            :label="$t('qr_export_show_token')"
+            :description="$t('qr_export_show_token_hint')"
+          />
           <div class="flex justify-end gap-2">
             <UButton
               variant="outline"
@@ -157,6 +162,7 @@ const exportForm = ref({
   sizeCm: 5,
   gridCols: 3,
   gridRows: 4,
+  showToken: false,
 });
 
 const exportFormatOptions = computed(() => [
@@ -167,7 +173,7 @@ const exportFormatOptions = computed(() => [
 
 function openExportModal(batchId: string) {
   exportBatchId.value = batchId;
-  exportForm.value = { format: 'zip', sizeCm: 5, gridCols: 3, gridRows: 4 };
+  exportForm.value = { format: 'zip', sizeCm: 5, gridCols: 3, gridRows: 4, showToken: false };
   showExportModal.value = true;
 }
 
@@ -175,20 +181,20 @@ function handleExportDownload() {
   const batchId = exportBatchId.value;
   if (!batchId)
     return;
-  const { format, sizeCm, gridCols, gridRows } = exportForm.value;
+  const { format, sizeCm, gridCols, gridRows, showToken } = exportForm.value;
   let url: string;
   if (format === 'zip') {
     const size = Math.min(15, Math.max(2, sizeCm));
-    url = `/api/batches/${batchId}/qr-zip?sizeCm=${size}`;
+    url = `/api/batches/${batchId}/qr-zip?sizeCm=${size}&showToken=${showToken}`;
   }
   else if (format === 'pdf-grid') {
     const cols = Math.min(6, Math.max(1, Math.floor(gridCols)));
     const rows = Math.min(8, Math.max(1, Math.floor(gridRows)));
-    url = `/api/batches/${batchId}/qr-pdf?layout=grid&cols=${cols}&rows=${rows}`;
+    url = `/api/batches/${batchId}/qr-pdf?layout=grid&cols=${cols}&rows=${rows}&showToken=${showToken}`;
   }
   else {
     const size = Math.min(15, Math.max(2, sizeCm));
-    url = `/api/batches/${batchId}/qr-pdf?layout=one-per-page&sizeCm=${size}`;
+    url = `/api/batches/${batchId}/qr-pdf?layout=one-per-page&sizeCm=${size}&showToken=${showToken}`;
   }
   window.open(url, '_blank');
   showExportModal.value = false;

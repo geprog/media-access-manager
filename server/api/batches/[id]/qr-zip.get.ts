@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   }
   const query = getQuery(event);
   const sizeCm = Math.min(15, Math.max(2, Number(query.sizeCm) || 5));
+  const showToken = String(query.showToken).toLowerCase() === 'true' || query.showToken === '1';
 
   const [batch, tokenRows] = await Promise.all([
     findBatchById(id),
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const appUrl = getRequestURL(event).origin;
   const tokensWithName = tokenRows.map(t => ({ token: t.token, name: t.name }));
   const batchName = batch?.name ?? '';
-  const archive = await createQRZipArchive(tokensWithName, appUrl, batchName, sizeCm);
+  const archive = await createQRZipArchive(tokensWithName, appUrl, batchName, sizeCm, showToken);
   const zipName = batchName
     ? `qr-${batchName.replace(/[^\w-]/g, '_')}-${id}.zip`
     : `batch-${id}-qr.zip`;
