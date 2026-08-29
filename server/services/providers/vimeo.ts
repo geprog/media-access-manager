@@ -2,6 +2,10 @@ import type { MediaItem, MediaProvider, OEmbedResponse } from './types';
 import type { VimeoConfig } from '~/server/db/schema';
 import { extract } from '@extractus/oembed-extractor';
 
+// Pin the Vimeo API version so response shapes cannot change under us when
+// Vimeo moves its default. See https://developer.vimeo.com/api/guides/start
+const VIMEO_API_VERSION = 'application/vnd.vimeo.*+json;version=3.4';
+
 export function createVimeoProvider(apiToken?: string): MediaProvider<VimeoConfig> {
   return {
     id: 'vimeo',
@@ -12,6 +16,7 @@ export function createVimeoProvider(apiToken?: string): MediaProvider<VimeoConfi
       }
       const response = await fetch('https://api.vimeo.com/me/videos?per_page=100', {
         headers: {
+          Accept: VIMEO_API_VERSION,
           Authorization: `Bearer ${apiToken}`,
         },
       });
