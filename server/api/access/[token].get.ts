@@ -13,11 +13,29 @@ export default defineEventHandler(async (event) => {
     ? await validateToken(token)
     : await validateAndConsumeToken(token);
   if (!tokenRow) {
-    throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      data: { reason: 'invalid_token' },
+    });
   }
-  const embed = await getViewableContent(tokenRow.mediaId);
+  // The token itself is fine from here on, so any failure below is a provider
+  // problem (video deleted, embedding disabled, API down) and must not be
+  // reported to the visitor as an invalid link.
+  let embed: Awaited<ReturnType<typeof getViewableContent>>;
+  try {
+    embed = await getViewableContent(tokenRow.mediaId);
+  }
+  catch (error) {
+    console.error(`Failed to load embed content for media ${tokenRow.mediaId}:`, error);
+    embed = null;
+  }
   if (!embed) {
-    throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'Bad Gateway',
+      data: { reason: 'media_unavailable' },
+    });
   }
   return embed;
 });

@@ -59,5 +59,6 @@
   "batches_title": "Batches",
   "batches_tokens_count": "Tokens",
   "public_invalid_token": "Dieser Link ist nicht mehr gültig. Bitte kontaktieren Sie den Support.",
+  "public_media_unavailable": "Dieses Video ist derzeit nicht verfügbar. Bitte kontaktieren Sie den Support.",
   "public_loading": "Wird geladen..."
 }

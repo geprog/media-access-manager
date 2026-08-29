@@ -9,7 +9,7 @@
     <div v-else-if="!mediaAccess" class="max-w-md text-center">
       <UIcon name="i-heroicons-exclamation-triangle" class="mx-auto h-16 w-16 text-amber-500" />
       <h1 class="mt-4 text-xl font-semibold">
-        {{ $t('public_invalid_token') }}
+        {{ mediaUnavailable ? $t('public_media_unavailable') : $t('public_invalid_token') }}
       </h1>
     </div>
     <div v-else class="w-full max-w-4xl">
@@ -32,7 +32,16 @@ const route = useRoute();
 
 const token = computed(() => route.params.token as string);
 
-const { data: mediaAccess, status: mediaAccessStatus } = useFetch(`/api/access/${encodeURIComponent(token.value)}`);
+const { data: mediaAccess, error, status: mediaAccessStatus } = useFetch(`/api/access/${encodeURIComponent(token.value)}`);
 
 const loading = computed(() => mediaAccessStatus.value === 'pending');
+
+/**
+ * The token was accepted but the provider could not deliver the media, so the
+ * visitor should not be told their link is broken.
+ */
+const mediaUnavailable = computed(() => {
+  const body = error.value?.data as { data?: { reason?: string } } | undefined;
+  return body?.data?.reason === 'media_unavailable';
+});
 </script>
