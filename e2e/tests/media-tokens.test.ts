@@ -1,11 +1,38 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@nuxt/test-utils/playwright';
 
+const ADMIN_PASSWORD = process.env.NUXT_ADMIN_PASSWORD ?? 'password';
+
 async function login(page: Page) {
   await page.goto('/');
-  await page.fill('input[type="password"]', process.env.NUXT_ADMIN_PASSWORD ?? 'password');
+  await page.fill('input[type="password"]', ADMIN_PASSWORD);
   await page.click('button[type="submit"]');
   await expect(page).toHaveURL('/', { timeout: 5000 });
+}
+
+/**
+ * Media outlives the test that created it, so the admin delete endpoint clears
+ * it out again — along with its batches and tokens. Every title created here
+ * starts with `E2E` and the tests in this file run sequentially, so this cannot
+ * remove media another test still needs.
+ *
+ * The calls run inside the page because the session cookie is `Secure`, which
+ * Playwright's API request context refuses to send over http. Logging in first
+ * covers the tests that drop the session on purpose.
+ */
+async function deleteTestMedia(page: Page) {
+  await page.goto('/');
+  await page.evaluate(async (password) => {
+    await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const media: Array<{ id: string, title: string }> = await fetch('/api/media').then(response => response.json());
+    await Promise.all(media
+      .filter(row => row.title.startsWith('E2E'))
+      .map(row => fetch(`/api/media/${row.id}`, { method: 'DELETE' })));
+  }, ADMIN_PASSWORD);
 }
 
 function uniqueId(prefix: string) {
@@ -108,6 +135,10 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
   await mockAccessibility(page, { status: 'unknown', issues: [] });
+});
+
+test.afterEach(async ({ page }) => {
+  await deleteTestMedia(page);
 });
 
 test.describe('Media and Tokens', () => {
