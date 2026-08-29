@@ -19,7 +19,7 @@
         :style="{ paddingBottom: mediaAccess.type === 'video' && mediaAccess.width && mediaAccess.height ? `${(mediaAccess.height / mediaAccess.width) * 100}%` : '56.25%' }"
       >
         <div
-          class="absolute inset-0"
+          class="absolute inset-0 [&_iframe]:h-full [&_iframe]:w-full"
           v-html="mediaAccess.html"
         />
       </div>
