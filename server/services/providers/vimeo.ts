@@ -18,16 +18,19 @@ export function createVimeoProvider(apiToken?: string): MediaProvider<VimeoConfi
       if (!response.ok) {
         throw new Error(`Vimeo API error: ${response.status}`);
       }
-      const data = await response.json() as { data: Array<{ uri: string, name: string, resource_key?: string }> };
-      return (data.data ?? []).map(v => ({
-        id: v.uri.replace(/^\/videos\//, ''),
-        providerId: 'vimeo',
-        title: v.name,
-        providerConfig: {
-          vimeoId: v.uri.replace(/^\/videos\//, ''),
-          resourceKey: v.resource_key,
-        },
-      }));
+      const data = await response.json() as { data: Array<{ uri: string, name: string }> };
+      return (data.data ?? []).map((v) => {
+        const videoId = v.uri.replace(/^\/videos\//, '');
+        return {
+          id: videoId,
+          providerId: 'vimeo',
+          title: v.name,
+          providerConfig: {
+            providerId: 'vimeo',
+            videoId,
+          } satisfies VimeoConfig,
+        };
+      });
     },
 
     async getViewableContent(
