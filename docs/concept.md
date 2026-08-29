@@ -152,20 +152,25 @@ interface MediaItem {
 
 ## 5. White-Label Theming
 
-Theme config (env or admin settings) used across admin and public UI:
+Theme config, set per deployment through `NUXT_PUBLIC_THEME_*` environment
+variables. See [theming.md](./theming.md) for the full reference.
 
-| Setting         | Description               | Example      |
-| --------------- | ------------------------- | ------------ |
-| `primary_color` | Primary brand color (hex) | `#3B82F6`    |
-| `company_logo`  | Logo URL or path          | `/logo.png`  |
-| `company_name`  | Brand name                | `Acme Media` |
+| Setting              | Description                             | Example      |
+| -------------------- | --------------------------------------- | ------------ |
+| `title`              | Brand name                              | `Acme Media` |
+| `logo` / `logoDark`  | Logo URL or path, per color mode        | `/logo.svg`  |
+| `favicon`            | Browser tab icon                        | `/icon.svg`  |
+| `colors.primary`     | Brand color, or a Tailwind palette name | `#0f4c81`    |
+| `colors.neutral`     | Greys for text, surfaces and borders    | `slate`      |
+| `radius` / `spacing` | Roundness and density of the whole UI   | `0.5rem`     |
+| `container`          | Maximum content width                   | `72rem`      |
 
 Implementation:
 
-- CSS variables for primary color (buttons, links, accents)
-- Logo in header/nav and public access page
-- Company name in header/footer and title
-- Config source: `.env` or a simple `theme` table; start with env for MVP
+- `utils/theme.ts` derives a full 11-shade Tailwind-style palette from a single
+  brand color and renders the theme as CSS custom properties
+- `plugins/theme.ts` injects them and sets the document title and favicon
+- Logo and company name in header/nav via `layouts/default.vue`
 
 ---
 
@@ -211,8 +216,6 @@ media-access-manager/
 │   │   └── providers/
 │   │       ├── types.ts   # MediaProvider interface
 │   │       └── vimeo.ts   # Vimeo implementation
-│   └── utils/
-│       └── theme.ts       # load theme from env
 ├── components/
 │   ├── admin/             # AdminLayout, MediaList, TokenList, TokenForm,
 │   │                      # BatchTokenGenerator, QRCodeDisplay
@@ -226,7 +229,8 @@ media-access-manager/
 │   ├── tokens/
 │   │   └── batch.vue      # Batch token generation (select media, count, QR ZIP)
 │   └── [token].vue        # Public access
-└── app.config.ts / runtimeConfig  # Theme: primaryColor, logo, companyName
+├── utils/theme.ts         # Brand palette + theme CSS variables
+└── plugins/theme.ts       # Applies the theme from runtimeConfig
 ```
 
 ---
@@ -284,10 +288,10 @@ NUXT_ADMIN_PASSWORD=...           # Hashed or plain (bcrypt recommended)
 VIMEO_API_TOKEN=...
 ENCRYPTION_KEY=...           # For Vimeo passwords
 
-# White-label
-THEME_PRIMARY_COLOR=#3B82F6
-THEME_COMPANY_LOGO=/logo.png
-THEME_COMPANY_NAME=Acme Media
+# White-label (see theming.md for the full list)
+NUXT_PUBLIC_THEME_TITLE=Acme Media
+NUXT_PUBLIC_THEME_LOGO=/logo.svg
+NUXT_PUBLIC_THEME_COLORS_PRIMARY=#0f4c81
 
 # App
 APP_URL=https://...

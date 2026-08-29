@@ -10,9 +10,27 @@ export default defineNuxtConfig({
     adminPassword: 'password',
     vimeoApiToken: '',
     public: {
-      title: 'Media Access Manager',
-      primaryColor: '',
-      logo: '',
+      // White-label theme, applied by `plugins/theme.ts`. Every value is
+      // set per deployment through `NUXT_PUBLIC_THEME_*`; see `docs/theming.md`.
+      theme: {
+        title: 'Media Access Manager',
+        logo: '',
+        logoDark: '',
+        logoHeight: '2rem',
+        favicon: '',
+        colors: {
+          primary: '',
+          secondary: '',
+          success: '',
+          info: '',
+          warning: '',
+          error: '',
+          neutral: '',
+        },
+        radius: '',
+        spacing: '',
+        container: '',
+      },
     },
     session: {
       name: 'mam-session',
@@ -23,8 +41,9 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   app: {
     head: {
+      // Only the shell title; `plugins/theme.ts` replaces it with the
+      // configured company name as soon as the app boots.
       title: 'Media Access Manager',
-      titleTemplate: '%s',
       charset: 'utf-8',
       viewport: 'width=device-width, initial-scale=1',
     },

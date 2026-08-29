@@ -3,11 +3,20 @@
     <UNavigationMenu :items="items" :ui="{ root: 'px-2 border-b dark:border-b-gray-800' }">
       <template #list-leading>
         <div class="flex items-center gap-2">
+          <UColorModeImage
+            v-if="logo && logoDark"
+            :light="logo"
+            :dark="logoDark"
+            :alt="title"
+            :style="{ height: logoHeight }"
+            class="w-auto object-contain"
+          />
           <img
-            v-if="logo"
+            v-else-if="logo"
             :src="logo"
             :alt="title"
-            class="h-8 object-contain"
+            :style="{ height: logoHeight }"
+            class="w-auto object-contain"
           >
           <span class="text-lg font-semibold">
             {{ title }}
@@ -25,7 +34,7 @@
 import type { NavigationMenuItem } from '@nuxt/ui';
 
 const { loggedIn } = useUserSession();
-const { title, logo } = useRuntimeConfig().public;
+const { title, logo, logoDark, logoHeight } = useRuntimeConfig().public.theme;
 
 const route = useRoute();
 const { t } = useI18n();
