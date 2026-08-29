@@ -4,6 +4,7 @@ export default defineAppConfig({
   },
   ui: {
     button: {
+      base: 'cursor-pointer',
       defaultVariants: {
         size: 'md',
       },
