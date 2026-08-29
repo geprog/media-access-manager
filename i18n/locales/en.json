@@ -21,8 +21,6 @@
   "media_video_load_error": "Could not load videos from the provider. Enter a video ID manually.",
   "media_video_enter_manually": "Enter video ID manually",
   "media_video_choose_from_library": "Choose from library",
-  "media_actions": "Actions",
-  "media_view_tokens": "View tokens",
   "media_delete": "Delete",
   "media_delete_title": "Delete media",
   "media_delete_confirm": "Do you really want to delete \"{title}\"?",

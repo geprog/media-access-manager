@@ -59,6 +59,12 @@ async function addMediaViaUI(
   await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible({ timeout: 10000 });
 }
 
+/** The media list has no action column: opening media means clicking its row. */
+async function openMediaViaUI(page: Page, title: string) {
+  await page.getByRole('row').filter({ hasText: title }).click();
+  await expect(page).toHaveURL(/\/media\/[^/]+/);
+}
+
 async function createTokenViaUI(
   page: Page,
   batchName: string,
@@ -177,8 +183,7 @@ test.describe('Media and Tokens', () => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     await addMediaViaUI(page, title);
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
-    await expect(page).toHaveURL(/\/media\/[^/]+/);
+    await openMediaViaUI(page, title);
 
     const batchName = `Batch ${uniqueId(testInfo.testId)}`;
     const token = await createTokenViaUI(page, batchName, 1);
@@ -194,7 +199,7 @@ test.describe('Media and Tokens', () => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     await addMediaViaUI(page, title);
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
 
     const batchName = `Batch ${uniqueId(testInfo.testId)}`;
     const token = await createTokenViaUI(page, batchName, 1);
@@ -228,7 +233,7 @@ test.describe('Media and Tokens', () => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     await addMediaViaUI(page, title);
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
 
     const batchName = `Batch ${uniqueId(testInfo.testId)}`;
     const token = await createTokenViaUI(page, batchName, 1);
@@ -265,7 +270,7 @@ test.describe('Media and Tokens', () => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     await addMediaViaUI(page, title);
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
 
     const batchName = `Batch ${uniqueId(testInfo.testId)}`;
     const token = await createTokenViaUI(page, batchName, 1);
@@ -292,46 +297,28 @@ test.describe('Media and Tokens', () => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     await addMediaViaUI(page, title);
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
     const batchName = `Batch ${uniqueId(testInfo.testId)}`;
     const token = await createTokenViaUI(page, batchName, 1);
     expect(token).toBeTruthy();
 
-    await page.goto('/');
-    const row = page.getByRole('row').filter({ hasText: title });
-    await row.getByRole('button', { name: 'Delete' }).click();
-
     // Cancelling must leave the media untouched.
+    await page.getByRole('button', { name: 'Delete' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText(title)).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
-    await expect(row).toBeVisible();
-
-    await row.getByRole('button', { name: 'Delete' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
-
-    await expect(page.getByRole('row').filter({ hasText: title })).toHaveCount(0, { timeout: 10000 });
-
-    // The token went with the media, so its link no longer opens anything.
-    await page.goto(`/${token}`);
-    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
-  });
-
-  test('deletes media from its detail page and returns to the list', async ({ page }, testInfo) => {
-    await login(page);
-
-    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
-    await addMediaViaUI(page, title);
-
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
-    await expect(page).toHaveURL(/\/media\/[^/]+/);
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
     await page.getByRole('button', { name: 'Delete' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/', { timeout: 10000 });
     await expect(page.getByRole('row').filter({ hasText: title })).toHaveCount(0);
+
+    // The token went with the media, so its link no longer opens anything.
+    await page.goto(`/${token}`);
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
   });
 
   test('shows a failing playback check with provider setup instructions', async ({ page }, testInfo) => {
@@ -345,7 +332,7 @@ test.describe('Media and Tokens', () => {
       issues: [{ code: 'vimeo_embed_disabled', severity: 'error' }],
     });
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
 
     await expect(page.getByText('Not playable')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Embedding is turned off for this video/i)).toBeVisible();
@@ -368,7 +355,7 @@ test.describe('Media and Tokens', () => {
       }],
     });
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
 
     await expect(page.getByText('Playable with limits')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Plays only on these domains: peac-video\.com/i)).toBeVisible();
@@ -381,7 +368,7 @@ test.describe('Media and Tokens', () => {
 
     await mockAccessibility(page, { status: 'ok', issues: [] });
 
-    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await openMediaViaUI(page, title);
 
     await expect(page.getByText('Playable', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Visitors with a valid token can watch/i)).toBeVisible();

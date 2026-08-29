@@ -21,8 +21,6 @@
   "media_video_load_error": "Videos konnten nicht vom Anbieter geladen werden. Geben Sie eine Video-ID manuell ein.",
   "media_video_enter_manually": "Video-ID manuell eingeben",
   "media_video_choose_from_library": "Aus Bibliothek auswählen",
-  "media_actions": "Aktionen",
-  "media_view_tokens": "Tokens anzeigen",
   "media_delete": "Löschen",
   "media_delete_title": "Medium löschen",
   "media_delete_confirm": "Möchten Sie „{title}“ wirklich löschen?",

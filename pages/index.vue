@@ -13,6 +13,7 @@
       <UTable
         :data="media ?? []"
         :columns="columns"
+        :ui="{ tbody: '[&>tr]:hover:bg-elevated/50', tr: 'relative' }"
       />
     </UCard>
     <UCard v-else>
@@ -81,10 +82,9 @@
 import type { TableColumn } from '@nuxt/ui';
 import { h, resolveComponent } from 'vue';
 
-const UButton = resolveComponent('UButton');
 const UBadge = resolveComponent('UBadge');
 const MediaAccessibilityBadge = resolveComponent('MediaAccessibilityBadge');
-const MediaDeleteButton = resolveComponent('MediaDeleteButton');
+const NuxtLink = resolveComponent('NuxtLink');
 const { t } = useI18n();
 
 const { data: media, refresh: refreshMedia } = useFetch('/api/media');
@@ -179,11 +179,14 @@ const columns: TableColumn<MediaRow>[] = [
   {
     accessorKey: 'title',
     header: t('media_title'),
-    // Long provider titles would otherwise push the trailing columns off-screen.
-    cell: ({ getValue }) => h('div', {
-      class: 'max-w-md truncate',
+    // The title link is stretched over the whole (relative) row, so clicking
+    // anywhere opens the media while the row keeps plain link semantics.
+    // Long provider titles are truncated to keep the row readable.
+    cell: ({ row, getValue }) => h(NuxtLink, {
+      to: `/media/${row.original.id}`,
+      class: 'block max-w-md truncate hover:underline before:absolute before:inset-0',
       title: getValue<string>(),
-    }, getValue<string>()),
+    }, () => getValue<string>()),
   },
   {
     id: 'providerId',
@@ -204,29 +207,7 @@ const columns: TableColumn<MediaRow>[] = [
       return h(MediaAccessibilityBadge, { status: report.status });
     },
   },
-  {
-    id: 'actions',
-    header: t('media_actions'),
-    cell: ({ row }) => h('div', { class: 'flex items-center justify-end gap-1' }, [
-      h(UButton, {
-        variant: 'ghost',
-        size: 'sm',
-        label: t('media_view_tokens'),
-        to: `/media/${row.original.id}`,
-      }),
-      h(MediaDeleteButton, {
-        mediaId: row.original.id,
-        title: row.original.title,
-        onDeleted: handleMediaDeleted,
-      }),
-    ]),
-  },
 ];
-
-async function handleMediaDeleted() {
-  await refreshMedia();
-  await refreshAccessibility();
-}
 
 async function handleAddMedia() {
   if (!canSubmit.value) {
