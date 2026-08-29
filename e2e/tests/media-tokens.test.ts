@@ -286,6 +286,54 @@ test.describe('Media and Tokens', () => {
     await expect(page.getByText(/currently unavailable/i)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/no longer valid/i)).not.toBeVisible();
   });
+  test('deletes media with its tokens after confirmation', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1);
+    expect(token).toBeTruthy();
+
+    await page.goto('/');
+    const row = page.getByRole('row').filter({ hasText: title });
+    await row.getByRole('button', { name: 'Delete' }).click();
+
+    // Cancelling must leave the media untouched.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(title)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(row).toBeVisible();
+
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+
+    await expect(page.getByRole('row').filter({ hasText: title })).toHaveCount(0, { timeout: 10000 });
+
+    // The token went with the media, so its link no longer opens anything.
+    await page.goto(`/${token}`);
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test('deletes media from its detail page and returns to the list', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+    await expect(page).toHaveURL(/\/media\/[^/]+/);
+
+    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+
+    await expect(page).toHaveURL('/', { timeout: 10000 });
+    await expect(page.getByRole('row').filter({ hasText: title })).toHaveCount(0);
+  });
+
   test('shows a failing playback check with provider setup instructions', async ({ page }, testInfo) => {
     await login(page);
 

@@ -9,9 +9,16 @@
     </UButton>
     <UCard v-if="media">
       <template #header>
-        <h1 class="text-2xl font-bold">
-          {{ media.title ?? '...' }}
-        </h1>
+        <div class="flex items-start justify-between gap-4">
+          <h1 class="text-2xl font-bold">
+            {{ media.title ?? '...' }}
+          </h1>
+          <MediaDeleteButton
+            :media-id="id"
+            :title="media.title ?? ''"
+            @deleted="handleMediaDeleted"
+          />
+        </div>
       </template>
       <div class="space-y-6">
         <MediaAccessibilityCard
@@ -253,6 +260,11 @@ const tokenColumns: TableColumn<TokenRow>[] = [
     },
   },
 ];
+
+function handleMediaDeleted() {
+  // The page's own media is gone, so there is nothing left to show here.
+  return navigateTo('/');
+}
 
 async function handleCreateBatch() {
   if (!batchForm.value.name.trim())

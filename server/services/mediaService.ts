@@ -1,7 +1,7 @@
 import type { MediaInsert } from '../db/schema';
 import type { AccessibilityContext, AccessibilityReport, MediaProvider } from './providers/types';
 import { eq } from 'drizzle-orm';
-import { media } from '../db/schema';
+import { batches, media, tokens } from '../db/schema';
 import { useDb } from '../utils/db';
 import { filterAvailableMediaItems } from '../utils/mediaAvailability';
 import { createVimeoProvider } from './providers/vimeo';
@@ -37,6 +37,32 @@ export async function createMedia(data: MediaInsert) {
     createdAt: new Date(),
   });
   return data;
+}
+
+export interface MediaDeletion {
+  deletedTokens: number
+  deletedBatches: number
+}
+
+/**
+ * Tokens and batches reference the media row, so they go first. All three
+ * deletes share one transaction: a half-finished delete would leave tokens
+ * pointing at media that no longer exists.
+ */
+export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
+  const existing = await getMediaById(id);
+  if (!existing) {
+    return null;
+  }
+  const db = useDb();
+  const deleted = db.transaction((tx) => {
+    const deletedTokens = tx.delete(tokens).where(eq(tokens.mediaId, id)).run().changes;
+    const deletedBatches = tx.delete(batches).where(eq(batches.mediaId, id)).run().changes;
+    tx.delete(media).where(eq(media.id, id)).run();
+    return { deletedTokens, deletedBatches };
+  });
+  forgetAccessibility(id);
+  return deleted;
 }
 
 export async function listMediaFromProvider(providerId: string) {
@@ -113,6 +139,15 @@ export async function verifyMediaAccessibility(
   const checkedAt = Date.now();
   accessibilityCache.set(cacheKey, { report, checkedAt });
   return { mediaId, report, checkedAt: new Date(checkedAt).toISOString() };
+}
+
+/** Cache keys carry the host, so every host's entry for the media is dropped. */
+function forgetAccessibility(mediaId: string) {
+  for (const key of accessibilityCache.keys()) {
+    if (key.startsWith(`${mediaId}::`)) {
+      accessibilityCache.delete(key);
+    }
+  }
 }
 
 async function runCheck(

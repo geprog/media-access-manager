@@ -84,6 +84,7 @@ import { h, resolveComponent } from 'vue';
 const UButton = resolveComponent('UButton');
 const UBadge = resolveComponent('UBadge');
 const MediaAccessibilityBadge = resolveComponent('MediaAccessibilityBadge');
+const MediaDeleteButton = resolveComponent('MediaDeleteButton');
 const { t } = useI18n();
 
 const { data: media, refresh: refreshMedia } = useFetch('/api/media');
@@ -206,14 +207,26 @@ const columns: TableColumn<MediaRow>[] = [
   {
     id: 'actions',
     header: t('media_actions'),
-    cell: ({ row }) => h(UButton, {
-      variant: 'ghost',
-      size: 'sm',
-      label: t('media_view_tokens'),
-      to: `/media/${row.original.id}`,
-    }),
+    cell: ({ row }) => h('div', { class: 'flex items-center justify-end gap-1' }, [
+      h(UButton, {
+        variant: 'ghost',
+        size: 'sm',
+        label: t('media_view_tokens'),
+        to: `/media/${row.original.id}`,
+      }),
+      h(MediaDeleteButton, {
+        mediaId: row.original.id,
+        title: row.original.title,
+        onDeleted: handleMediaDeleted,
+      }),
+    ]),
   },
 ];
+
+async function handleMediaDeleted() {
+  await refreshMedia();
+  await refreshAccessibility();
+}
 
 async function handleAddMedia() {
   if (!canSubmit.value) {
