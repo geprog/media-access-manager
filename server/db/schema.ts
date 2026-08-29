@@ -3,6 +3,8 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export interface ProviderConfig<Provider extends string> {
   providerId: Provider
+  // Provider-specific fields (e.g. Vimeo's `videoId`) are stored alongside.
+  [key: string]: unknown
 }
 
 export interface VimeoConfig extends ProviderConfig<'vimeo'> {

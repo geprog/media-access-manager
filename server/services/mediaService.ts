@@ -3,6 +3,7 @@ import type { MediaProvider } from './providers/types';
 import { eq } from 'drizzle-orm';
 import { media } from '../db/schema';
 import { useDb } from '../utils/db';
+import { filterAvailableMediaItems } from '../utils/mediaAvailability';
 import { createVimeoProvider } from './providers/vimeo';
 
 const providers = new Map<string, MediaProvider<any>>();
@@ -44,6 +45,21 @@ export async function listMediaFromProvider(providerId: string) {
     return [];
   }
   return prov.listMedia();
+}
+
+/**
+ * Provider media that has no media row yet, i.e. what an admin can still add.
+ */
+export async function listAvailableMediaFromProvider(providerId: string) {
+  const items = await listMediaFromProvider(providerId);
+  if (items.length === 0) {
+    return items;
+  }
+  const existing = await getMediaFromDb();
+  return filterAvailableMediaItems(
+    items,
+    existing.map(row => row.providerConfig),
+  );
 }
 
 export async function getViewableContent(mediaId: string) {

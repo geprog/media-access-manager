@@ -21,6 +21,7 @@ export function createVimeoProvider(apiToken?: string): MediaProvider<VimeoConfi
 
     async listMedia(): Promise<MediaItem[]> {
       if (!apiToken) {
+        console.warn('No API token configured for querying media from vimeo');
         return [];
       }
       const items: MediaItem[] = [];

@@ -30,21 +30,44 @@
             </h2>
           </template>
           <UForm class="flex flex-col gap-6" @submit.prevent="handleAddMedia">
-            <UFormField :label="$t('media_title')">
-              <UInput v-model="addMediaData.title" required />
-            </UFormField>
             <UFormField :label="$t('media_provider')">
               <USelect
-                v-model="addMediaData.providerConfig.providerId"
+                v-model="providerId"
                 :items="[{ label: 'Vimeo', value: 'vimeo' }]"
               />
             </UFormField>
-            <template v-if="addMediaData.providerConfig.providerId === 'vimeo'">
-              <UFormField label="Video ID">
-                <UInput v-model="addMediaData.providerConfig.videoId" required placeholder="123456789" />
+            <div class="flex flex-col gap-1">
+              <UFormField
+                v-if="!manualEntry"
+                :label="$t('media_video')"
+                :hint="availableHint"
+              >
+                <USelectMenu
+                  v-model="selectedVideoId"
+                  class="w-full"
+                  :aria-label="$t('media_video')"
+                  value-key="value"
+                  :items="availableItems"
+                  :loading="availableStatus === 'pending'"
+                  :placeholder="$t('media_video_select_placeholder')"
+                  :search-input="{ placeholder: $t('media_video_search_placeholder') }"
+                />
               </UFormField>
-            </template>
-            <UButton type="submit" class="mt-4">
+              <UFormField v-else :label="$t('media_video_id')">
+                <UInput v-model="manualVideoId" required placeholder="123456789" />
+              </UFormField>
+              <UButton
+                variant="link"
+                size="xs"
+                class="self-start p-0"
+                :label="manualEntry ? $t('media_video_choose_from_library') : $t('media_video_enter_manually')"
+                @click="toggleManualEntry"
+              />
+            </div>
+            <UFormField :label="$t('media_title')">
+              <UInput v-model="title" required />
+            </UFormField>
+            <UButton type="submit" class="mt-4" :disabled="!canSubmit">
               {{ $t('media_add') }}
             </UButton>
           </UForm>
@@ -56,7 +79,6 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
-import type { Media, MediaInsert } from '~/server/db/schema';
 import { h, resolveComponent } from 'vue';
 
 const UButton = resolveComponent('UButton');
@@ -65,23 +87,84 @@ const { t } = useI18n();
 
 const { data: media, refresh: refreshMedia } = useFetch('/api/media');
 
+type MediaRow = NonNullable<typeof media.value>[number];
+
 const showAddModal = ref(false);
-const addMediaData = ref<MediaInsert>({
-  id: '',
-  title: '',
-  providerConfig: { providerId: 'vimeo', videoId: '' },
+const providerId = ref('vimeo');
+const title = ref('');
+const selectedVideoId = ref<string | undefined>(undefined);
+const manualEntry = ref(false);
+const manualVideoId = ref('');
+
+const {
+  data: availableMedia,
+  status: availableStatus,
+  error: availableError,
+  execute: loadAvailableMedia,
+} = useFetch(() => `/api/providers/${providerId.value}/available-media`, {
+  immediate: false,
+  default: () => [],
+});
+
+const availableItems = computed(() =>
+  availableMedia.value.map(item => ({ label: item.title, value: item.id })),
+);
+
+const selectedItem = computed(() =>
+  availableMedia.value.find(item => item.id === selectedVideoId.value),
+);
+
+const availableHint = computed(() => {
+  if (availableStatus.value === 'pending') {
+    return undefined;
+  }
+  if (availableError.value) {
+    return t('media_video_load_error');
+  }
+  if (availableItems.value.length === 0) {
+    return t('media_video_none_available');
+  }
+  return undefined;
+});
+
+const providerConfig = computed(() =>
+  manualEntry.value
+    ? { providerId: providerId.value, videoId: manualVideoId.value.trim() }
+    : selectedItem.value?.providerConfig,
+);
+
+const canSubmit = computed(() =>
+  !!title.value.trim()
+  && (manualEntry.value ? !!manualVideoId.value.trim() : !!selectedItem.value),
+);
+
+// Prefill the title from the picked video, but never overwrite what the admin typed.
+let autoFilledTitle = '';
+watch(selectedItem, (item) => {
+  if (item && (!title.value.trim() || title.value === autoFilledTitle)) {
+    title.value = item.title;
+    autoFilledTitle = item.title;
+  }
 });
 
 function openAddModal() {
   showAddModal.value = true;
-  addMediaData.value = {
-    id: '',
-    title: '',
-    providerConfig: { providerId: 'vimeo', videoId: '' },
-  };
+  title.value = '';
+  selectedVideoId.value = undefined;
+  manualEntry.value = false;
+  manualVideoId.value = '';
+  autoFilledTitle = '';
+  // Refetch on every open so media added in the meantime drops off the list.
+  void loadAvailableMedia();
 }
 
-const columns: TableColumn<Omit<Media, 'createdAt'>>[] = [
+function toggleManualEntry() {
+  manualEntry.value = !manualEntry.value;
+  selectedVideoId.value = undefined;
+  manualVideoId.value = '';
+}
+
+const columns: TableColumn<MediaRow>[] = [
   { accessorKey: 'title', header: t('media_title') },
   {
     id: 'providerId',
@@ -104,9 +187,12 @@ const columns: TableColumn<Omit<Media, 'createdAt'>>[] = [
 ];
 
 async function handleAddMedia() {
+  if (!canSubmit.value) {
+    return;
+  }
   await $fetch('/api/media', {
     method: 'POST',
-    body: addMediaData.value,
+    body: { title: title.value.trim(), providerConfig: providerConfig.value },
   });
   showAddModal.value = false;
   await refreshMedia();

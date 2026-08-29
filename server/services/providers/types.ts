@@ -45,7 +45,7 @@ export interface MediaItem {
   id: string
   providerId: string
   title: string
-  providerConfig: Record<string, unknown>
+  providerConfig: ProviderConfig<string>
 }
 
 export interface MediaProvider<Config extends ProviderConfig<string>> {

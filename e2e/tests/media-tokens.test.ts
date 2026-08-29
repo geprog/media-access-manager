@@ -12,15 +12,49 @@ function uniqueId(prefix: string) {
   return `${prefix}-${Date.now()}`;
 }
 
+interface ProviderVideo { id: string, providerId: string, title: string, providerConfig: { providerId: string, videoId: string } }
+
+function providerVideo(videoId: string, title: string): ProviderVideo {
+  return {
+    id: videoId,
+    providerId: 'vimeo',
+    title,
+    providerConfig: { providerId: 'vimeo', videoId },
+  };
+}
+
+/**
+ * Stands in for the Vimeo API: serves whatever `videos()` currently returns, so
+ * a test can shrink the list the way the server does once media is added.
+ */
+async function mockAvailableMedia(page: Page, videos: () => ProviderVideo[]) {
+  await page.route(/\/api\/providers\/[^/]+\/available-media/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(videos()),
+    });
+  });
+}
+
+async function pickAvailableVideo(page: Page, videoTitle: string) {
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('option', { name: videoTitle }).click();
+  // The dropdown swallows clicks until its close animation is done.
+  await expect(page.getByRole('listbox')).toBeHidden();
+}
+
 async function addMediaViaUI(
   page: Page,
   title: string,
   videoId = '1234567890',
 ) {
+  await mockAvailableMedia(page, () => [providerVideo(videoId, `Vimeo ${videoId}`)]);
   await page.getByRole('button', { name: 'Add Media' }).click();
   const dialog = page.getByRole('dialog');
+  await pickAvailableVideo(page, `Vimeo ${videoId}`);
   await dialog.getByLabel('Title').fill(title);
-  await dialog.getByLabel('Video ID').fill(videoId);
   await dialog.getByRole('button', { name: 'Add Media' }).click();
   await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible({ timeout: 10000 });
 }
@@ -53,6 +87,61 @@ test.describe('Media and Tokens', () => {
     const row = page.getByRole('row').filter({ hasText: title });
     await expect(row.getByText(title)).toBeVisible({ timeout: 5000 });
     await expect(row.getByText('vimeo')).toBeVisible();
+  });
+
+  test('prefills the title from the selected vimeo video', async ({ page }, testInfo) => {
+    await login(page);
+
+    const videoTitle = `E2E Vimeo Video ${uniqueId(testInfo.testId)}`;
+    await mockAvailableMedia(page, () => [providerVideo('555000111', videoTitle)]);
+
+    await page.getByRole('button', { name: 'Add Media' }).click();
+    await pickAvailableVideo(page, videoTitle);
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('Title')).toHaveValue(videoTitle);
+
+    await dialog.getByRole('button', { name: 'Add Media' }).click();
+    await expect(page.getByRole('row').filter({ hasText: videoTitle })).toBeVisible({ timeout: 10000 });
+  });
+
+  test('only offers vimeo videos that are not added yet', async ({ page }, testInfo) => {
+    await login(page);
+
+    const suffix = uniqueId(testInfo.testId);
+    const takenTitle = `E2E Taken ${suffix}`;
+    const freeTitle = `E2E Free ${suffix}`;
+    const added = new Set<string>();
+    await mockAvailableMedia(page, () =>
+      [providerVideo('900000001', takenTitle), providerVideo('900000002', freeTitle)]
+        .filter(v => !added.has(v.id)));
+
+    await page.getByRole('button', { name: 'Add Media' }).click();
+    await pickAvailableVideo(page, takenTitle);
+    await page.getByRole('dialog').getByRole('button', { name: 'Add Media' }).click();
+    await expect(page.getByRole('row').filter({ hasText: takenTitle })).toBeVisible({ timeout: 10000 });
+    added.add('900000001');
+
+    await page.getByRole('button', { name: 'Add Media' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Video', exact: true }).click();
+    await expect(page.getByRole('option', { name: freeTitle })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('option', { name: takenTitle })).toHaveCount(0);
+  });
+
+  test('adds media by entering a video id manually', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E Manual ${uniqueId(testInfo.testId)}`;
+    await mockAvailableMedia(page, () => []);
+
+    await page.getByRole('button', { name: 'Add Media' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Enter video ID manually' }).click();
+    await dialog.getByLabel('Video ID').fill('123456789');
+    await dialog.getByLabel('Title').fill(title);
+    await dialog.getByRole('button', { name: 'Add Media' }).click();
+
+    await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible({ timeout: 10000 });
   });
 
   test('generate token for media', async ({ page }, testInfo) => {
