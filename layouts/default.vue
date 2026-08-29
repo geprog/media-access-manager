@@ -31,25 +31,25 @@ const route = useRoute();
 const { t } = useI18n();
 const path = computed(() => route.path);
 
-const items = computed<NavigationMenuItem[]>(() => [
-  [
-    {
-      label: t('media_list_title'),
-      icon: 'i-heroicons-home',
-      to: '/',
-      active: path.value.startsWith('/'),
-    },
-  ],
-  [
-    ...(loggedIn.value
-      ? [
-          {
-            label: t('logout'),
-            icon: 'i-heroicons-arrow-right-on-rectangle',
-            to: '/auth/logout/',
-          },
-        ]
-      : []),
-  ],
-]);
+// Visitors on a public token page have no admin session, so the layout shows
+// nothing but the branding for them.
+const items = computed<NavigationMenuItem[]>(() => (loggedIn.value
+  ? [
+      [
+        {
+          label: t('media_list_title'),
+          icon: 'i-heroicons-home',
+          to: '/',
+          active: path.value.startsWith('/'),
+        },
+      ],
+      [
+        {
+          label: t('logout'),
+          icon: 'i-heroicons-arrow-right-on-rectangle',
+          to: '/auth/logout/',
+        },
+      ],
+    ]
+  : []));
 </script>

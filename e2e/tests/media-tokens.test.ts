@@ -195,6 +195,43 @@ test.describe('Media and Tokens', () => {
     await expect(page.locator('iframe[title="E2E Mock Video"]')).toBeVisible();
   });
 
+  test('plays the media for a visitor without a session', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1);
+    expect(token).toBeTruthy();
+
+    const mockEmbed = {
+      type: 'video',
+      version: '1.0',
+      title: 'E2E Public Video',
+      html: '<iframe src="https://example.com/e2e-public-video" title="E2E Public Video"></iframe>',
+      width: 640,
+      height: 360,
+    };
+    await page.route(/\/api\/access\/[^/]+/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockEmbed),
+      });
+    });
+
+    // Whoever holds the token URL may watch, so drop the admin session first.
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    await expect(page).toHaveURL(`/${token}`);
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await expect(page.locator('iframe[title="E2E Public Video"]')).toBeVisible();
+  });
+
   test('reports an unavailable video instead of blaming the token', async ({ page }, testInfo) => {
     await login(page);
 

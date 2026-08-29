@@ -28,6 +28,10 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  public: true,
+});
+
 const route = useRoute();
 
 const token = computed(() => route.params.token as string);
