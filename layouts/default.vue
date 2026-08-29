@@ -21,6 +21,14 @@
           <span class="text-lg font-semibold">
             {{ title }}
           </span>
+          <!-- Tells admins which app the branded UI belongs to. Visitors on a
+               token page have no session, so they never see it. -->
+          <UBadge
+            v-if="loggedIn"
+            color="neutral"
+            variant="subtle"
+            :label="t('admin_ui_hint')"
+          />
         </div>
       </template>
     </UNavigationMenu>

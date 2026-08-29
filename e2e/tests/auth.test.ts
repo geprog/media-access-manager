@@ -19,5 +19,6 @@ test.describe('Admin Auth', () => {
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL('/', { timeout: 5000 });
     await expect(page.getByRole('heading', { name: 'Media', exact: true })).toBeVisible();
+    await expect(page.getByText('Media Access Manager Admin')).toBeVisible();
   });
 });

@@ -293,6 +293,8 @@ test.describe('Media and Tokens', () => {
     await expect(page).toHaveURL(`/${token}`);
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await expect(page.locator('iframe[title="E2E Public Video"]')).toBeVisible();
+    // The admin hint belongs to the admin UI, not to a visitor's token page.
+    await expect(page.getByText('Media Access Manager Admin')).toHaveCount(0);
   });
 
   test('reports an unavailable video instead of blaming the token', async ({ page }, testInfo) => {
