@@ -1,5 +1,5 @@
 import type { MediaInsert } from '../db/schema';
-import type { MediaProvider } from './providers/types';
+import type { AccessibilityContext, AccessibilityReport, MediaProvider } from './providers/types';
 import { eq } from 'drizzle-orm';
 import { media } from '../db/schema';
 import { useDb } from '../utils/db';
@@ -72,4 +72,82 @@ export async function getViewableContent(mediaId: string) {
     return null;
   }
   return prov.getViewableContent(mediaRow.providerConfig);
+}
+
+/**
+ * Playback checks hit the provider's API two or three times, so results are
+ * reused briefly. Admins can force a fresh check from the media page.
+ */
+const ACCESSIBILITY_CACHE_TTL_MS = 5 * 60 * 1000;
+const accessibilityCache = new Map<string, { report: AccessibilityReport, checkedAt: number }>();
+
+export interface MediaAccessibility {
+  mediaId: string
+  report: AccessibilityReport
+  /** ISO timestamp of the check the report came from. */
+  checkedAt: string
+}
+
+export async function verifyMediaAccessibility(
+  mediaId: string,
+  options?: { refresh?: boolean, context?: AccessibilityContext },
+): Promise<MediaAccessibility | null> {
+  const mediaRow = await getMediaById(mediaId);
+  if (!mediaRow) {
+    return null;
+  }
+
+  // The verdict depends on the host the app is served from, so a report cached
+  // for one host must not be handed out for another.
+  const cacheKey = `${mediaId}::${options?.context?.host ?? ''}`;
+  const cached = accessibilityCache.get(cacheKey);
+  if (!options?.refresh && cached && Date.now() - cached.checkedAt < ACCESSIBILITY_CACHE_TTL_MS) {
+    return { mediaId, report: cached.report, checkedAt: new Date(cached.checkedAt).toISOString() };
+  }
+
+  const prov = getProviders().get(mediaRow.providerConfig.providerId);
+  const report: AccessibilityReport = prov
+    ? await runCheck(prov, mediaRow.providerConfig, options?.context)
+    : { status: 'unknown', issues: [{ code: 'unknown_provider', severity: 'warning' }] };
+
+  const checkedAt = Date.now();
+  accessibilityCache.set(cacheKey, { report, checkedAt });
+  return { mediaId, report, checkedAt: new Date(checkedAt).toISOString() };
+}
+
+async function runCheck(
+  prov: MediaProvider<any>,
+  providerConfig: MediaInsert['providerConfig'],
+  context?: AccessibilityContext,
+): Promise<AccessibilityReport> {
+  try {
+    return await prov.verifyAccessibility(providerConfig, context);
+  }
+  catch (error) {
+    console.error(`Accessibility check failed for provider ${prov.id}:`, error);
+    return { status: 'unknown', issues: [{ code: 'check_failed', severity: 'warning' }] };
+  }
+}
+
+/**
+ * Each check makes up to three provider requests, so a large library would
+ * otherwise fire hundreds of parallel calls and trip the provider's rate limit.
+ */
+const ACCESSIBILITY_CONCURRENCY = 5;
+
+export async function verifyAllMediaAccessibility(
+  context?: AccessibilityContext,
+): Promise<MediaAccessibility[]> {
+  const rows = await getMediaFromDb();
+  const results: MediaAccessibility[] = [];
+  for (let i = 0; i < rows.length; i += ACCESSIBILITY_CONCURRENCY) {
+    const batch = rows.slice(i, i + ACCESSIBILITY_CONCURRENCY);
+    const checked = await Promise.all(batch.map(row => verifyMediaAccessibility(row.id, { context })));
+    results.push(...checked.filter((result): result is MediaAccessibility => result !== null));
+  }
+  return results;
+}
+
+export function getProviderSetupInstructionKeys(providerId: string): string[] {
+  return getProviders().get(providerId)?.setupInstructionKeys ?? [];
 }

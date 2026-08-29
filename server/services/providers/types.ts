@@ -48,8 +48,43 @@ export interface MediaItem {
   providerConfig: ProviderConfig<string>
 }
 
+export type AccessibilitySeverity = 'error' | 'warning';
+
+export interface AccessibilityIssue {
+  /** Rendered by the UI as the i18n key `accessibility_issue_<code>`. */
+  code: string
+  severity: AccessibilitySeverity
+  /** Interpolation values for the translated message. */
+  details?: Record<string, string>
+}
+
+export interface AccessibilityReport {
+  /**
+   * `ok` when a token holder can watch the media, `warning` when playback
+   * works but is conditional (e.g. limited to certain domains), `error` when
+   * it cannot play, `unknown` when the provider could not be interrogated.
+   */
+  status: 'ok' | 'warning' | 'error' | 'unknown'
+  issues: AccessibilityIssue[]
+}
+
+export interface AccessibilityContext {
+  /** Hostname this app is served from, without port; `undefined` when unknown. */
+  host?: string
+}
+
 export interface MediaProvider<Config extends ProviderConfig<string>> {
   id: string
   listMedia: () => Promise<MediaItem[]>
   getViewableContent: (providerConfig: Config) => Promise<OEmbedResponse>
+  /**
+   * Checks whether a public visitor holding a valid token could actually watch
+   * this media, and explains what to change when they could not.
+   */
+  verifyAccessibility: (
+    providerConfig: Config,
+    context?: AccessibilityContext,
+  ) => Promise<AccessibilityReport>
+  /** i18n keys the admin UI renders as an ordered setup checklist. */
+  setupInstructionKeys: string[]
 }

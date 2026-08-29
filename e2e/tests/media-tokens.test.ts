@@ -77,6 +77,33 @@ async function createTokenViaUI(
   return await tokenCell.textContent() ?? '';
 }
 
+/**
+ * Stands in for the accessibility endpoints so no test reaches the real Vimeo
+ * API. Registered before every test, and overridden by `mockAccessibility` in
+ * the tests that assert on a specific verdict.
+ */
+interface StubReport {
+  status: string
+  issues: Array<{ code: string, severity: string, details?: Record<string, string> }>
+}
+
+async function mockAccessibility(page: Page, report: StubReport) {
+  await page.route('**/api/media/*/accessibility**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ mediaId: 'stub', report, checkedAt: new Date().toISOString() }),
+    });
+  });
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/accessibility', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+  await mockAccessibility(page, { status: 'unknown', issues: [] });
+});
+
 test.describe('Media and Tokens', () => {
   test('add media', async ({ page }, testInfo) => {
     await login(page);
@@ -258,5 +285,58 @@ test.describe('Media and Tokens', () => {
 
     await expect(page.getByText(/currently unavailable/i)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/no longer valid/i)).not.toBeVisible();
+  });
+  test('shows a failing playback check with provider setup instructions', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await mockAccessibility(page, {
+      status: 'error',
+      issues: [{ code: 'vimeo_embed_disabled', severity: 'error' }],
+    });
+
+    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+
+    await expect(page.getByText('Not playable')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Embedding is turned off for this video/i)).toBeVisible();
+    // A failing check opens the checklist, so the fix is readable without a click.
+    await expect(page.getByText(/Set "Where can this be embedded\?" to "Specific domains"/i).first()).toBeVisible();
+  });
+
+  test('reports a playable video and names its domain restriction', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await mockAccessibility(page, {
+      status: 'warning',
+      issues: [{
+        code: 'vimeo_embed_whitelist_domains',
+        severity: 'warning',
+        details: { domains: 'peac-video.com' },
+      }],
+    });
+
+    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+
+    await expect(page.getByText('Playable with limits')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Plays only on these domains: peac-video\.com/i)).toBeVisible();
+  });
+  test('shows no warning when the app host is on the provider whitelist', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await mockAccessibility(page, { status: 'ok', issues: [] });
+
+    await page.getByRole('row').filter({ hasText: title }).getByRole('link', { name: 'View tokens' }).click();
+
+    await expect(page.getByText('Playable', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Visitors with a valid token can watch/i)).toBeVisible();
+    await expect(page.getByText(/Plays only on these domains/i)).toHaveCount(0);
   });
 });

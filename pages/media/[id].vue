@@ -14,6 +14,10 @@
         </h1>
       </template>
       <div class="space-y-6">
+        <MediaAccessibilityCard
+          :media-id="id"
+          :provider-id="media.providerConfig?.providerId"
+        />
         <div>
           <h2 class="mb-4 text-lg font-semibold">
             {{ $t('tokens_title') }}

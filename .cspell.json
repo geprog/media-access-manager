@@ -21,6 +21,8 @@
     "culori",
     "demi",
     "dprint",
+    "einbettungscode",
+    "einbettungsprüfung",
     "esbuild",
     "extractus",
     "geprog",
@@ -30,9 +32,11 @@
     "nuxtjs",
     "oembed",
     "oklch",
+    "peac",
     "qrcode",
     "unlayered",
     "unrs",
+    "vimeo",
     "wrongpassword"
   ],
   "overrides": [

@@ -83,9 +83,19 @@ import { h, resolveComponent } from 'vue';
 
 const UButton = resolveComponent('UButton');
 const UBadge = resolveComponent('UBadge');
+const MediaAccessibilityBadge = resolveComponent('MediaAccessibilityBadge');
 const { t } = useI18n();
 
 const { data: media, refresh: refreshMedia } = useFetch('/api/media');
+
+// One batched call rather than a request per row; the server caches each check.
+const { data: accessibility, refresh: refreshAccessibility } = useFetch('/api/accessibility', {
+  default: () => [],
+});
+
+const accessibilityByMediaId = computed(
+  () => new Map(accessibility.value.map(entry => [entry.mediaId, entry.report])),
+);
 
 type MediaRow = NonNullable<typeof media.value>[number];
 
@@ -165,13 +175,32 @@ function toggleManualEntry() {
 }
 
 const columns: TableColumn<MediaRow>[] = [
-  { accessorKey: 'title', header: t('media_title') },
+  {
+    accessorKey: 'title',
+    header: t('media_title'),
+    // Long provider titles would otherwise push the trailing columns off-screen.
+    cell: ({ getValue }) => h('div', {
+      class: 'max-w-md truncate',
+      title: getValue<string>(),
+    }, getValue<string>()),
+  },
   {
     id: 'providerId',
     accessorFn: row => row.providerConfig.providerId,
     header: t('media_provider'),
     cell: ({ getValue }) => {
       return h(UBadge, { label: getValue(), variant: 'subtle' });
+    },
+  },
+  {
+    id: 'accessibility',
+    header: t('media_status'),
+    cell: ({ row }) => {
+      const report = accessibilityByMediaId.value.get(row.original.id);
+      if (!report) {
+        return h(UBadge, { label: '…', variant: 'subtle', color: 'neutral' });
+      }
+      return h(MediaAccessibilityBadge, { status: report.status });
     },
   },
   {
@@ -196,5 +225,6 @@ async function handleAddMedia() {
   });
   showAddModal.value = false;
   await refreshMedia();
+  await refreshAccessibility();
 }
 </script>
