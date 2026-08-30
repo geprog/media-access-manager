@@ -36,6 +36,8 @@
   "tokens_usage": "Usage",
   "tokens_expires": "Expires",
   "tokens_open_link": "Open link",
+  "tokens_filter_placeholder": "Search tokens…",
+  "tokens_filter_empty": "No tokens match this search.",
   "tokens_download_qr_zip": "Download QR Codes (ZIP)",
   "qr_export": "Export QR Codes",
   "qr_export_format": "Format",

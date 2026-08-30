@@ -29,16 +29,24 @@
           <h2 class="mb-4 text-lg font-semibold">
             {{ $t('tokens_title') }}
           </h2>
-          <div class="flex gap-4 mb-4">
+          <div class="flex flex-wrap items-center gap-4 mb-4">
             <UButton
               :label="$t('create_new_tokens')"
               variant="outline"
               @click="showBatchModal = true"
             />
+            <UInput
+              v-if="hasBatches"
+              v-model="tokenFilter"
+              class="max-w-sm"
+              icon="i-heroicons-magnifying-glass"
+              :placeholder="$t('tokens_filter_placeholder')"
+            />
           </div>
         </div>
-        <div v-if="batches && batches.length > 0">
+        <div v-if="hasBatches">
           <UAccordion
+            v-model="openBatchIds"
             type="multiple"
             :items="batchAccordionItems"
           >
@@ -52,12 +60,16 @@
                   />
                 </div>
                 <BatchTokensTable
-                  :batch-id="item.value"
+                  :tokens="matchingTokensByBatch.get(item.value) ?? []"
                   :columns="tokenColumns"
+                  :loading="tokensLoading"
                 />
               </div>
             </template>
           </UAccordion>
+          <p v-if="batchAccordionItems.length === 0" class="py-4 text-sm text-muted">
+            {{ $t('tokens_filter_empty') }}
+          </p>
         </div>
       </div>
     </UCard>
@@ -154,16 +166,19 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
+import type { TokenRow } from '~/utils/tokens';
 import { h, resolveComponent } from 'vue';
+import { groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const route = useRoute();
 const { t } = useI18n();
 
-interface TokenRow { token: string, name: string, usageCount: number, usageLimit: number | null, expiresAt: string | null, batchId?: string }
-
 const id = computed(() => route.params.id as string);
 const { data: media } = useFetch(`/api/media/${id.value}`);
 const { data: batches, refresh: refreshBatches } = useFetch(`/api/batches?mediaId=${id.value}`);
+// Every token of this media at once, so one search box can reach across all
+// batches instead of each batch searching only its own rows.
+const { data: tokens, status: tokensStatus, refresh: refreshTokens } = useFetch(`/api/tokens?mediaId=${id.value}`);
 const showBatchModal = ref(false);
 const showExportModal = ref(false);
 const exportBatchId = ref<string | null>(null);
@@ -211,12 +226,35 @@ function handleExportDownload() {
   showExportModal.value = false;
 }
 
-const batchAccordionItems = computed(() =>
-  batches.value?.map(b => ({
-    label: `${b.name || b.id} (${b.count} ${t('batches_tokens_count')})`,
-    value: b.id,
-  })),
+const hasBatches = computed(() => (batches.value?.length ?? 0) > 0);
+const tokensLoading = computed(() => tokensStatus.value === 'pending');
+
+const tokenFilter = ref('');
+const isSearching = computed(() => tokenFilter.value.trim().length > 0);
+
+const matchingTokensByBatch = computed(() =>
+  groupMatchingTokensByBatch(tokens.value ?? [], tokenFilter.value),
 );
+
+const batchAccordionItems = computed(() =>
+  (batches.value ?? [])
+    // A batch without a single hit would only be an empty drawer to open.
+    .filter(b => !isSearching.value || matchingTokensByBatch.value.has(b.id))
+    .map(b => ({
+      label: isSearching.value
+        ? `${b.name || b.id} (${matchingTokensByBatch.value.get(b.id)?.length ?? 0} / ${b.count} ${t('batches_tokens_count')})`
+        : `${b.name || b.id} (${b.count} ${t('batches_tokens_count')})`,
+      value: b.id,
+    })),
+);
+
+const openBatchIds = ref<string[]>([]);
+
+// Searching means the admin wants to see the hits, not hunt for the batch
+// holding them, so every batch with a match opens itself.
+watch(tokenFilter, () => {
+  openBatchIds.value = isSearching.value ? [...matchingTokensByBatch.value.keys()] : [];
+});
 
 function formatDate(ts: string | number | Date) {
   return new Date(ts).toLocaleDateString();
@@ -284,6 +322,6 @@ async function handleCreateBatch() {
   });
   showBatchModal.value = false;
   batchForm.value = { name: '', count: 50, usageLimit: null, expiresAt: '' };
-  await refreshBatches();
+  await Promise.all([refreshBatches(), refreshTokens()]);
 }
 </script>

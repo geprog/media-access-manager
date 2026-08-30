@@ -281,6 +281,38 @@ test.describe('Media and Tokens', () => {
     expect(token.length).toBe(32);
   });
 
+  test('searches tokens across every batch', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const searchedBatch = `Batch A ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, searchedBatch, 2);
+    expect(token).toBeTruthy();
+    const otherBatch = `Batch B ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, otherBatch, 2);
+
+    // The search box sits outside the batches, so it is reachable without
+    // opening any of them.
+    const search = page.getByPlaceholder('Search tokens');
+    await expect(search).toBeVisible();
+    await search.fill(token);
+
+    // The batch holding the hit opens itself; the one without a hit is gone.
+    await expect(page.locator('code')).toHaveText([token]);
+    await expect(page.getByRole('button').filter({ hasText: otherBatch })).toHaveCount(0);
+    await expect(page.getByRole('button').filter({ hasText: searchedBatch })).toBeVisible();
+
+    await search.fill('no-token-has-this-value');
+    await expect(page.getByText('No tokens match this search.')).toBeVisible();
+
+    await search.clear();
+    await expect(page.getByRole('button').filter({ hasText: otherBatch })).toBeVisible();
+  });
+
   test('use token to see media', async ({ page }, testInfo) => {
     await login(page);
 
