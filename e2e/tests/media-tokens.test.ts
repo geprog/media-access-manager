@@ -110,6 +110,42 @@ async function createTokenViaUI(
   return await tokenCell.textContent() ?? '';
 }
 
+interface AccessWindow { expiresAt: string | null, usageLimit: number | null, usageCount: number }
+
+/** A token with no expiry and no usage limit, i.e. the plainest access window. */
+function openAccess(): AccessWindow {
+  return { expiresAt: null, usageLimit: null, usageCount: 0 };
+}
+
+function videoEmbed(iframeTitle: string) {
+  return {
+    type: 'video',
+    version: '1.0',
+    title: iframeTitle,
+    html: `<iframe src="https://example.com/e2e-video" title="${iframeTitle}"></iframe>`,
+    width: 640,
+    height: 360,
+  };
+}
+
+/**
+ * Stands in for the public access endpoint, the only place the token page
+ * learns what it may show: the media title, the embed, and how much of the
+ * token's access window is left.
+ */
+async function mockAccess(
+  page: Page,
+  body: { title: string, embed: ReturnType<typeof videoEmbed>, access: AccessWindow },
+) {
+  await page.route(/\/api\/access\/[^/]+/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+  });
+}
+
 /**
  * Stands in for the accessibility endpoints so no test reaches the real Vimeo
  * API. Registered before every test, and overridden by `mockAccessibility` in
@@ -236,20 +272,10 @@ test.describe('Media and Tokens', () => {
     const token = await createTokenViaUI(page, batchName, 1);
     expect(token).toBeTruthy();
 
-    const mockEmbed = {
-      type: 'video',
-      version: '1.0',
-      title: 'E2E Mock Video',
-      html: '<iframe src="https://example.com/e2e-mock-video" title="E2E Mock Video"></iframe>',
-      width: 640,
-      height: 360,
-    };
-    await page.route(/\/api\/access\/[^/]+/, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(mockEmbed),
-      });
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E Mock Video'),
+      access: openAccess(),
     });
 
     await page.goto(`/${token}`);
@@ -270,20 +296,10 @@ test.describe('Media and Tokens', () => {
     const token = await createTokenViaUI(page, batchName, 1);
     expect(token).toBeTruthy();
 
-    const mockEmbed = {
-      type: 'video',
-      version: '1.0',
-      title: 'E2E Public Video',
-      html: '<iframe src="https://example.com/e2e-public-video" title="E2E Public Video"></iframe>',
-      width: 640,
-      height: 360,
-    };
-    await page.route(/\/api\/access\/[^/]+/, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(mockEmbed),
-      });
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E Public Video'),
+      access: openAccess(),
     });
 
     // Whoever holds the token URL may watch, so drop the admin session first.
@@ -295,6 +311,71 @@ test.describe('Media and Tokens', () => {
     await expect(page.locator('iframe[title="E2E Public Video"]')).toBeVisible();
     // The admin hint belongs to the admin UI, not to a visitor's token page.
     await expect(page.getByText('Media Access Manager Admin')).toHaveCount(0);
+  });
+
+  test('names the media and how much access is left', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1);
+    expect(token).toBeTruthy();
+
+    // An hour past the three days so the page cannot round down to two while
+    // the browser is still navigating.
+    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000);
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E Countdown Video'),
+      access: { expiresAt: expiresAt.toISOString(), usageLimit: 5, usageCount: 2 },
+    });
+
+    await page.goto(`/${token}`);
+
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('3 days left')).toBeVisible();
+    await expect(page.getByText('can be opened 3 more times')).toBeVisible();
+  });
+
+  test('says a link never expires only when nothing else limits it', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1);
+    expect(token).toBeTruthy();
+
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E Endless Video'),
+      access: openAccess(),
+    });
+
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText('This link does not expire')).toBeVisible({ timeout: 5000 });
+    // Without a usage limit there is no view count to report.
+    await expect(page.getByText(/can be opened/)).toHaveCount(0);
+
+    // A usage limit ends the access just as surely as a date would, so the
+    // view count replaces the expiry line rather than sitting next to it.
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E Endless Video'),
+      access: { expiresAt: null, usageLimit: 4, usageCount: 1 },
+    });
+    await page.reload();
+
+    await expect(page.getByText('can be opened 3 more times')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('This link does not expire')).toHaveCount(0);
   });
 
   test('reports an unavailable video instead of blaming the token', async ({ page }, testInfo) => {

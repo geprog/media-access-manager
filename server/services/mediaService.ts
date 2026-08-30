@@ -1,5 +1,5 @@
 import type { MediaInsert } from '../db/schema';
-import type { AccessibilityContext, AccessibilityReport, MediaProvider } from './providers/types';
+import type { AccessibilityContext, AccessibilityReport, MediaProvider, OEmbedResponse } from './providers/types';
 import { eq } from 'drizzle-orm';
 import { batches, media, tokens } from '../db/schema';
 import { useDb } from '../utils/db';
@@ -88,7 +88,16 @@ export async function listAvailableMediaFromProvider(providerId: string) {
   );
 }
 
-export async function getViewableContent(mediaId: string) {
+export interface ViewableMedia {
+  title: string
+  embed: OEmbedResponse
+}
+
+/**
+ * The embed plus the title an admin gave the media, so a visitor can tell what
+ * they are about to watch instead of just seeing a bare player.
+ */
+export async function getViewableMedia(mediaId: string): Promise<ViewableMedia | null> {
   const mediaRow = await getMediaById(mediaId);
   if (!mediaRow) {
     return null;
@@ -97,7 +106,10 @@ export async function getViewableContent(mediaId: string) {
   if (!prov) {
     return null;
   }
-  return prov.getViewableContent(mediaRow.providerConfig);
+  return {
+    title: mediaRow.title,
+    embed: await prov.getViewableContent(mediaRow.providerConfig),
+  };
 }
 
 /**
