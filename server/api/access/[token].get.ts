@@ -1,5 +1,5 @@
-import { getViewableMedia } from '../../services/mediaService';
-import { validateAndConsumeToken, validateToken } from '../../services/tokenService';
+import { getMediaById, getViewableMedia } from '../../services/mediaService';
+import { getAccessDenial, validateAndConsumeToken, validateToken } from '../../services/tokenService';
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token');
@@ -13,10 +13,18 @@ export default defineEventHandler(async (event) => {
     ? await validateToken(token)
     : await validateAndConsumeToken(token);
   if (!tokenRow) {
+    const denial = await getAccessDenial(token);
+    const deniedMedia = denial.mediaId ? await getMediaById(denial.mediaId) : null;
     throw createError({
       statusCode: 404,
       statusMessage: 'Not Found',
-      data: { reason: 'invalid_token' },
+      data: {
+        reason: denial.reason,
+        title: deniedMedia?.title ?? null,
+        // Admins check their own links here; the id sends them on to the media
+        // instead of a support mail. Visitors have no use for it.
+        mediaId: isAdmin ? denial.mediaId : null,
+      },
     });
   }
   // The token itself is fine from here on, so any failure below is a provider

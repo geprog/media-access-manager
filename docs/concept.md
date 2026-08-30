@@ -273,7 +273,8 @@ media-access-manager/
 3. **Global admin auth** – Single password, simple session
 4. **QR service** – QR generation (URL → PNG/SVG), batch ZIP
 5. **Admin UI** – Media list, media detail, token create/list, batch generator + QR ZIP download
-6. **Public access page** – Token validation, embed or "Contact support" message
+6. **Public access page** – Token validation, embed, or an expiry notice with a
+   mail link to `NUXT_PUBLIC_SUPPORT_EMAIL` for requesting further access
 7. **White-label theming** – Primary color, logo, company name via CSS vars and layout
 
 ---
@@ -287,6 +288,9 @@ NUXT_ADMIN_PASSWORD=...           # Hashed or plain (bcrypt recommended)
 # Media providers (Vimeo)
 VIMEO_API_TOKEN=...
 ENCRYPTION_KEY=...           # For Vimeo passwords
+
+# Support contact offered on an expired access link (optional)
+NUXT_PUBLIC_SUPPORT_EMAIL=support@acme.example
 
 # White-label (see theming.md for the full list)
 NUXT_PUBLIC_THEME_TITLE=Acme Media

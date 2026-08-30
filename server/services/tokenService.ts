@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { batches, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
-import { isTokenValid } from '../utils/tokenValidation';
+import { getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 
 export { isTokenValid };
 
@@ -24,6 +24,35 @@ export async function validateToken(tokenValue: string): Promise<Token | null> {
     return null;
   }
   return tokenRow;
+}
+
+/**
+ * Why the public access endpoint turned a token down. A token whose access
+ * window has closed — by date or by used-up views — is reported as
+ * `token_expired`, because that visitor can ask for further access; an unknown
+ * or not-yet-started token stays a plain invalid link.
+ */
+export type AccessDenialReason = 'token_expired' | 'invalid_token';
+
+export interface AccessDenial {
+  reason: AccessDenialReason
+  /**
+   * The media an expired token pointed at, so the page can still name the
+   * video the visitor wanted. Stays `null` for a link that was never valid:
+   * whoever holds it was never allowed to know what it leads to.
+   */
+  mediaId: string | null
+}
+
+export async function getAccessDenial(tokenValue: string): Promise<AccessDenial> {
+  const tokenRow = await findTokenByValue(tokenValue);
+  if (!tokenRow) {
+    return { reason: 'invalid_token', mediaId: null };
+  }
+  const reason = getTokenInvalidReason(tokenRow);
+  return reason === 'expired' || reason === 'usage_limit_reached'
+    ? { reason: 'token_expired', mediaId: tokenRow.mediaId }
+    : { reason: 'invalid_token', mediaId: null };
 }
 
 export async function validateAndConsumeToken(tokenValue: string): Promise<Token | null> {

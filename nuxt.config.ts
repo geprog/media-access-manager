@@ -10,6 +10,9 @@ export default defineNuxtConfig({
     adminPassword: 'password',
     vimeoApiToken: '',
     public: {
+      // Where a visitor whose access has ended asks for a new link. Empty
+      // means no address is published, so the token page offers no mail link.
+      supportEmail: '',
       // White-label theme, applied by `plugins/theme.ts`. Every value is
       // set per deployment through `NUXT_PUBLIC_THEME_*`; see `docs/theming.md`.
       theme: {

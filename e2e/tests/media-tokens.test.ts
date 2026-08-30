@@ -86,6 +86,27 @@ async function addMediaViaUI(
   await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible({ timeout: 10000 });
 }
 
+/**
+ * Creates a token straight through the admin API, the only way to get one whose
+ * access window is already closed — the create dialog cannot travel back in
+ * time. Runs inside the page for the same cookie reason as `deleteTestMedia`.
+ */
+async function createExpiredToken(page: Page, mediaId: string): Promise<string> {
+  return page.evaluate(async (id) => {
+    const response = await fetch('/api/tokens', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mediaId: id,
+        name: 'expired',
+        expiresAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      }),
+    });
+    const created: { token: string } = await response.json();
+    return created.token;
+  }, mediaId);
+}
+
 /** The media list has no action column: opening media means clicking its row. */
 async function openMediaViaUI(page: Page, title: string) {
   await page.getByRole('row').filter({ hasText: title }).click();
@@ -311,6 +332,65 @@ test.describe('Media and Tokens', () => {
     await expect(page.locator('iframe[title="E2E Public Video"]')).toBeVisible();
     // The admin hint belongs to the admin UI, not to a visitor's token page.
     await expect(page.getByText('Media Access Manager Admin')).toHaveCount(0);
+  });
+
+  test('offers a mail link for further access once a token has expired', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+    await openMediaViaUI(page, title);
+
+    const mediaId = page.url().split('/media/')[1] ?? '';
+    expect(mediaId).toBeTruthy();
+    const token = await createExpiredToken(page, mediaId);
+    expect(token).toBeTruthy();
+
+    // The visitor holding the expired link has no admin session, so they get
+    // the support route rather than the admin's way into the media.
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/access to this video has ended/i)).toBeVisible({ timeout: 5000 });
+    // The visitor still learns which video they lost access to.
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
+    const requestAccess = page.getByRole('link', { name: /request further access/i });
+    await expect(requestAccess).toHaveAttribute('href', /^mailto:support@example\.com\?/);
+    const href = decodeURIComponent(await requestAccess.getAttribute('href') ?? '');
+    expect(href).toContain(token);
+    expect(href).toContain(title);
+    await expect(page.getByRole('link', { name: /open media details/i })).toHaveCount(0);
+  });
+
+  test('sends an admin from an expired link to the media instead of to support', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+    await openMediaViaUI(page, title);
+
+    const mediaId = page.url().split('/media/')[1] ?? '';
+    const token = await createExpiredToken(page, mediaId);
+    expect(token).toBeTruthy();
+
+    // Still logged in: the admin is checking a link they handed out themselves.
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/access to this video has ended/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: /request further access/i })).toHaveCount(0);
+    await page.getByRole('link', { name: /open media details/i }).click();
+    await expect(page).toHaveURL(`/media/${mediaId}`);
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  });
+
+  test('reports an unknown link as invalid without offering a mail link', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto('/not-a-real-token');
+
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: /request further access/i })).toHaveCount(0);
+    // Nothing to name: an unknown link never granted access to any video.
+    await expect(page.getByRole('heading')).toHaveText(/no longer valid/i);
   });
 
   test('names the media and how much access is left', async ({ page }, testInfo) => {
