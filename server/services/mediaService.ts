@@ -132,6 +132,11 @@ export interface MediaAccessibility {
   report: AccessibilityReport
   /** ISO timestamp of the check the report came from. */
   checkedAt: string
+  /**
+   * Link to the media at its provider, where the settings behind a failed check
+   * are changed; `null` when the provider offers no such link.
+   */
+  providerUrl: string | null
 }
 
 export async function verifyMediaAccessibility(
@@ -143,22 +148,26 @@ export async function verifyMediaAccessibility(
     return null;
   }
 
+  const prov = getProviders().get(mediaRow.providerConfig.providerId);
+  // Built from the stored config rather than cached with the report: it never
+  // changes between checks and stays available while a check is being redone.
+  const providerUrl = prov?.getSettingsUrl(mediaRow.providerConfig) ?? null;
+
   // The verdict depends on the host the app is served from, so a report cached
   // for one host must not be handed out for another.
   const cacheKey = `${mediaId}::${options?.context?.host ?? ''}`;
   const cached = accessibilityCache.get(cacheKey);
   if (!options?.refresh && cached && Date.now() - cached.checkedAt < ACCESSIBILITY_CACHE_TTL_MS) {
-    return { mediaId, report: cached.report, checkedAt: new Date(cached.checkedAt).toISOString() };
+    return { mediaId, report: cached.report, checkedAt: new Date(cached.checkedAt).toISOString(), providerUrl };
   }
 
-  const prov = getProviders().get(mediaRow.providerConfig.providerId);
   const report: AccessibilityReport = prov
     ? await runCheck(prov, mediaRow.providerConfig, options?.context)
     : { status: 'unknown', issues: [{ code: 'unknown_provider', severity: 'warning' }] };
 
   const checkedAt = Date.now();
   accessibilityCache.set(cacheKey, { report, checkedAt });
-  return { mediaId, report, checkedAt: new Date(checkedAt).toISOString() };
+  return { mediaId, report, checkedAt: new Date(checkedAt).toISOString(), providerUrl };
 }
 
 /** Cache keys carry the host, so every host's entry for the media is dropped. */

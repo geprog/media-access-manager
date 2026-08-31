@@ -140,6 +140,9 @@ export interface StubReport {
   issues: Array<{ code: string, severity: string, details?: Record<string, string> }>
 }
 
+/** Where the endpoint points an admin for the default test video's settings. */
+export const PROVIDER_SETTINGS_URL = 'https://vimeo.com/manage/videos/1234567890/privacy';
+
 /**
  * Stands in for the accessibility endpoints so no test reaches the real Vimeo
  * API. Registered before every test, and overridden in the tests that assert
@@ -150,7 +153,12 @@ export async function mockAccessibility(page: Page, report: StubReport) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ mediaId: 'stub', report, checkedAt: new Date().toISOString() }),
+      body: JSON.stringify({
+        mediaId: 'stub',
+        report,
+        checkedAt: new Date().toISOString(),
+        providerUrl: PROVIDER_SETTINGS_URL,
+      }),
     });
   });
 }

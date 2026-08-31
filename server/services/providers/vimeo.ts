@@ -3,6 +3,7 @@ import type { VimeoConfig } from '~/server/db/schema';
 import type { VimeoAccessibilityInput } from '~/server/utils/vimeoAccessibility';
 import { extract } from '@extractus/oembed-extractor';
 import { diagnoseVimeoAccessibility } from '~/server/utils/vimeoAccessibility';
+import { vimeoSettingsUrl } from '~/server/utils/vimeoUrls';
 
 // Pin the Vimeo API version so response shapes cannot change under us when
 // Vimeo moves its default. See https://developer.vimeo.com/api/guides/start
@@ -97,6 +98,10 @@ export function createVimeoProvider(apiToken?: string): MediaProvider<VimeoConfi
     },
 
     setupInstructionKeys: VIMEO_SETUP_INSTRUCTIONS,
+
+    getSettingsUrl(providerConfig: VimeoConfig): string | null {
+      return vimeoSettingsUrl(providerConfig.videoId);
+    },
 
     async verifyAccessibility(
       providerConfig: VimeoConfig,

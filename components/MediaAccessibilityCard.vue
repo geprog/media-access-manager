@@ -12,6 +12,18 @@
           <span v-if="accessibility" class="text-sm text-muted">
             {{ t('accessibility_checked_at', { time: formatTime(accessibility.checkedAt) }) }}
           </span>
+          <!-- Straight to the media at the provider, so a reported issue can be
+               fixed without searching for it there first. -->
+          <UButton
+            v-if="accessibility?.providerUrl"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            icon="i-heroicons-arrow-top-right-on-square"
+            :to="accessibility.providerUrl"
+            target="_blank"
+            :label="t('accessibility_open_at_provider')"
+          />
           <UButton
             variant="outline"
             size="sm"
@@ -67,6 +79,7 @@ interface MediaAccessibility {
   mediaId: string
   report: AccessibilityReport
   checkedAt: string
+  providerUrl: string | null
 }
 
 const accessibility = ref<MediaAccessibility | null>(null);

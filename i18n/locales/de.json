@@ -81,6 +81,7 @@
   "media_status": "Wiedergabe",
   "accessibility_title": "Wiedergabe-Prüfung",
   "accessibility_recheck": "Erneut prüfen",
+  "accessibility_open_at_provider": "Video beim Anbieter öffnen",
   "accessibility_checked_at": "Zuletzt geprüft {time}",
   "accessibility_status_ok": "Abspielbar",
   "accessibility_status_warning": "Eingeschränkt abspielbar",

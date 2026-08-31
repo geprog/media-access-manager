@@ -87,4 +87,11 @@ export interface MediaProvider<Config extends ProviderConfig<string>> {
   ) => Promise<AccessibilityReport>
   /** i18n keys the admin UI renders as an ordered setup checklist. */
   setupInstructionKeys: string[]
+  /**
+   * Direct link to this media at the provider, pointing where its playback
+   * settings are changed, so an admin acting on a failed check does not have to
+   * find the media there by hand. `null` when the config names no media the
+   * provider can link to.
+   */
+  getSettingsUrl: (providerConfig: Config) => string | null
 }

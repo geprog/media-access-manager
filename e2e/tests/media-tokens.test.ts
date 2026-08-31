@@ -8,6 +8,7 @@ import {
   mockAccessibility,
   mockAvailableMedia,
   pickAvailableVideo,
+  PROVIDER_SETTINGS_URL,
   providerVideo,
   stubProviderCalls,
   uniqueId,
@@ -440,6 +441,9 @@ test.describe('Media and Tokens', () => {
     await expect(page.getByText(/Embedding is turned off for this video/i)).toBeVisible();
     // A failing check opens the checklist, so the fix is readable without a click.
     await expect(page.getByText(/Set "Where can this be embedded\?" to "Specific domains"/i).first()).toBeVisible();
+    // Fixing it happens at the provider, so the page links straight to the video there.
+    await expect(page.getByRole('link', { name: 'Open video at provider' }))
+      .toHaveAttribute('href', PROVIDER_SETTINGS_URL);
   });
 
   test('reports a playable video and names its domain restriction', async ({ page }, testInfo) => {

@@ -81,6 +81,7 @@
   "media_status": "Playback",
   "accessibility_title": "Playback check",
   "accessibility_recheck": "Re-check",
+  "accessibility_open_at_provider": "Open video at provider",
   "accessibility_checked_at": "Last checked {time}",
   "accessibility_status_ok": "Playable",
   "accessibility_status_warning": "Playable with limits",
