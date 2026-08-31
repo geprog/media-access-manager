@@ -34,4 +34,17 @@ export default antfu(
       }],
     },
   },
+  {
+    files: ['server/**/*.ts', 'drizzle.config.ts'],
+    rules: {
+      'node/prefer-global/process': 'off',
+      'node/prefer-global/buffer': 'off',
+    },
+  },
+  {
+    files: ['docs/**'],
+    rules: {
+      'markdown/fenced-code-language': 'off',
+    },
+  },
 );

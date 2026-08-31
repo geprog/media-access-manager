@@ -9,6 +9,7 @@
 <script setup lang="ts">
 const toast = useToast();
 const { t } = useI18n();
+
 onErrorCaptured((error) => {
   console.error(error);
   toast.add({

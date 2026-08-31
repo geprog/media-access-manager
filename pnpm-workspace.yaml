@@ -1,0 +1,23 @@
+minimumReleaseAge: 1440
+
+minimumReleaseAgeExclude:
+  - ioredis@5.10.0
+
+shellEmulator: true
+
+strictPeerDependencies: true
+
+trustPolicy: no-downgrade
+
+trustPolicyIgnoreAfter: 267840
+
+ignoredBuiltDependencies:
+  - better-sqlite3
+  - core-js
+  - unrs-resolver
+
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - bcrypt
+  - esbuild
+  - vue-demi
