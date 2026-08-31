@@ -67,11 +67,6 @@ export default defineNuxtConfig({
       viewport: 'width=device-width, initial-scale=1',
     },
   },
-  vite: {
-    server: {
-      allowedHosts: process.env.GITPOD_WORKSPACE_CLUSTER_HOST ? [`3000-${process.env.HOSTNAME}.${process.env.GITPOD_WORKSPACE_CLUSTER_HOST}`] : undefined,
-    },
-  },
   typescript: {
     strict: true,
   },

@@ -1,8 +1,0 @@
-.node-template:
-  image: node:24
-  before_script:
-    - corepack enable
-
-include:
-  - local: .gitlab/workflows/tests.yml
-  - local: .gitlab/workflows/deploy.yml

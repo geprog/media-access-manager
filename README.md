@@ -206,8 +206,6 @@ Issues and pull requests are welcome at
 describes the conventions this project follows – they apply to humans and AI
 assistants alike.
 
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/geprog/media-access-manager)
-
 ## License
 
 [MIT](LICENSE) © GEPROG GmbH
