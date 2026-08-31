@@ -1,95 +1,23 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@nuxt/test-utils/playwright';
-
-const ADMIN_PASSWORD = process.env.NUXT_ADMIN_PASSWORD ?? 'password';
-
-async function login(page: Page) {
-  await page.goto('/');
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await expect(page).toHaveURL('/', { timeout: 5000 });
-}
-
-/**
- * Media outlives the test that created it, so the admin delete endpoint clears
- * it out again — along with its batches and tokens. Every title created here
- * starts with `E2E` and the tests in this file run sequentially, so this cannot
- * remove media another test still needs.
- *
- * The calls run inside the page because the session cookie is `Secure`, which
- * Playwright's API request context refuses to send over http. Logging in first
- * covers the tests that drop the session on purpose.
- */
-async function deleteTestMedia(page: Page) {
-  await page.goto('/');
-  await page.evaluate(async (password) => {
-    await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    const media: Array<{ id: string, title: string }> = await fetch('/api/media').then(response => response.json());
-    await Promise.all(media
-      .filter(row => row.title.startsWith('E2E'))
-      .map(row => fetch(`/api/media/${row.id}`, { method: 'DELETE' })));
-  }, ADMIN_PASSWORD);
-}
-
-function uniqueId(prefix: string) {
-  return `${prefix}-${Date.now()}`;
-}
-
-interface ProviderVideo { id: string, providerId: string, title: string, providerConfig: { providerId: string, videoId: string } }
-
-function providerVideo(videoId: string, title: string): ProviderVideo {
-  return {
-    id: videoId,
-    providerId: 'vimeo',
-    title,
-    providerConfig: { providerId: 'vimeo', videoId },
-  };
-}
-
-/**
- * Stands in for the Vimeo API: serves whatever `videos()` currently returns, so
- * a test can shrink the list the way the server does once media is added.
- */
-async function mockAvailableMedia(page: Page, videos: () => ProviderVideo[]) {
-  await page.route(/\/api\/providers\/[^/]+\/available-media/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(videos()),
-    });
-  });
-}
-
-async function pickAvailableVideo(page: Page, videoTitle: string) {
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByRole('option', { name: videoTitle }).click();
-  // The dropdown swallows clicks until its close animation is done.
-  await expect(page.getByRole('listbox')).toBeHidden();
-}
-
-async function addMediaViaUI(
-  page: Page,
-  title: string,
-  videoId = '1234567890',
-) {
-  await mockAvailableMedia(page, () => [providerVideo(videoId, `Vimeo ${videoId}`)]);
-  await page.getByRole('button', { name: 'Add Media' }).click();
-  const dialog = page.getByRole('dialog');
-  await pickAvailableVideo(page, `Vimeo ${videoId}`);
-  await dialog.getByLabel('Title').fill(title);
-  await dialog.getByRole('button', { name: 'Add Media' }).click();
-  await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible({ timeout: 10000 });
-}
+import {
+  addMediaViaUI,
+  createTokenViaUI,
+  deleteTestData,
+  login,
+  mockAccessibility,
+  mockAvailableMedia,
+  pickAvailableVideo,
+  providerVideo,
+  stubProviderCalls,
+  uniqueId,
+  videoEmbed,
+} from '../support/admin';
 
 /**
  * Creates a token straight through the admin API, the only way to get one whose
  * access window is already closed — the create dialog cannot travel back in
- * time. Runs inside the page for the same cookie reason as `deleteTestMedia`.
+ * time. Runs inside the page for the same cookie reason as `deleteTestData`.
  */
 async function createExpiredToken(page: Page, mediaId: string): Promise<string> {
   return page.evaluate(async (id) => {
@@ -113,40 +41,11 @@ async function openMediaViaUI(page: Page, title: string) {
   await expect(page).toHaveURL(/\/media\/[^/]+/);
 }
 
-async function createTokenViaUI(
-  page: Page,
-  batchName: string,
-  count = 1,
-): Promise<string> {
-  await page.getByRole('button', { name: 'Create new Tokens' }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Batch name').fill(batchName);
-  await dialog.getByLabel('Count').fill(String(count));
-  await dialog.getByRole('button', { name: 'Create new Tokens' }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
-  const batchButton = page.getByRole('button').filter({ hasText: batchName });
-  await batchButton.click();
-  const tokenCell = page.locator('code').first();
-  await expect(tokenCell).toBeVisible({ timeout: 10000 });
-  return await tokenCell.textContent() ?? '';
-}
-
 interface AccessWindow { expiresAt: string | null, usageLimit: number | null, usageCount: number }
 
 /** A token with no expiry and no usage limit, i.e. the plainest access window. */
 function openAccess(): AccessWindow {
   return { expiresAt: null, usageLimit: null, usageCount: 0 };
-}
-
-function videoEmbed(iframeTitle: string) {
-  return {
-    type: 'video',
-    version: '1.0',
-    title: iframeTitle,
-    html: `<iframe src="https://example.com/e2e-video" title="${iframeTitle}"></iframe>`,
-    width: 640,
-    height: 360,
-  };
 }
 
 /**
@@ -167,35 +66,12 @@ async function mockAccess(
   });
 }
 
-/**
- * Stands in for the accessibility endpoints so no test reaches the real Vimeo
- * API. Registered before every test, and overridden by `mockAccessibility` in
- * the tests that assert on a specific verdict.
- */
-interface StubReport {
-  status: string
-  issues: Array<{ code: string, severity: string, details?: Record<string, string> }>
-}
-
-async function mockAccessibility(page: Page, report: StubReport) {
-  await page.route('**/api/media/*/accessibility**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ mediaId: 'stub', report, checkedAt: new Date().toISOString() }),
-    });
-  });
-}
-
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/accessibility', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
-  });
-  await mockAccessibility(page, { status: 'unknown', issues: [] });
+  await stubProviderCalls(page);
 });
 
 test.afterEach(async ({ page }) => {
-  await deleteTestMedia(page);
+  await deleteTestData(page);
 });
 
 test.describe('Media and Tokens', () => {

@@ -1,19 +1,25 @@
+import type { TokenTarget } from '../../services/tokenService';
 import { createToken } from '../../services/tokenService';
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
     mediaId?: string
+    groupId?: string
     name?: string
     startsAt?: string
     expiresAt?: string
     usageLimit?: number
   }>(event);
-  const mediaId = body?.mediaId ?? '';
   const name = body?.name ?? '';
-  if (!mediaId || !name) {
+  // A token points at one media or at one group, never at both and never at
+  // neither — otherwise there is nothing for it to unlock.
+  const target: TokenTarget | null = body?.mediaId
+    ? (body?.groupId ? null : { mediaId: body.mediaId })
+    : (body?.groupId ? { groupId: body.groupId } : null);
+  if (!target || !name) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
-  const options: Parameters<typeof createToken>[0] = { mediaId, name };
+  const options: Parameters<typeof createToken>[0] = { ...target, name };
   if (body?.startsAt)
     options.startsAt = new Date(body.startsAt);
   if (body?.expiresAt)

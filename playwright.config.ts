@@ -10,7 +10,10 @@ export default defineConfig<ConfigOptions>({
   testDir: './e2e/tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  workers: process.env.CI ? 1 : undefined,
+  // Every spec drives the same server and the same database, and cleans up by
+  // deleting everything named `E2E`. Two files running at once would clear
+  // each other's media mid-test, so the whole suite runs on one worker.
+  workers: 1,
   reporter: [['html', { outputFolder: 'playwright-report' }]],
   testMatch: '**/*.test.ts',
   use: {

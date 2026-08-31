@@ -55,9 +55,17 @@ const items = computed<NavigationMenuItem[]>(() => (loggedIn.value
       [
         {
           label: t('media_list_title'),
-          icon: 'i-heroicons-home',
+          icon: 'i-heroicons-film',
           to: '/',
-          active: path.value.startsWith('/'),
+          // Only the media list itself, so opening a group does not light up
+          // both entries at once.
+          active: path.value === '/' || path.value.startsWith('/media'),
+        },
+        {
+          label: t('groups_title'),
+          icon: 'i-heroicons-rectangle-stack',
+          to: '/groups',
+          active: path.value.startsWith('/groups'),
         },
       ],
       [

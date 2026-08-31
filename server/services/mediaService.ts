@@ -1,7 +1,7 @@
 import type { MediaInsert } from '../db/schema';
 import type { AccessibilityContext, AccessibilityReport, MediaProvider, OEmbedResponse } from './providers/types';
 import { eq } from 'drizzle-orm';
-import { batches, media, tokens } from '../db/schema';
+import { batches, media, mediaGroupItems, tokenMediaUsage, tokens } from '../db/schema';
 import { useDb } from '../utils/db';
 import { filterAvailableMediaItems } from '../utils/mediaAvailability';
 import { createVimeoProvider } from './providers/vimeo';
@@ -42,12 +42,18 @@ export async function createMedia(data: MediaInsert) {
 export interface MediaDeletion {
   deletedTokens: number
   deletedBatches: number
+  /**
+   * Groups the media was part of. Their tokens survive and keep working, they
+   * just lead to one media less from now on.
+   */
+  removedFromGroups: number
 }
 
 /**
- * Tokens and batches reference the media row, so they go first. All three
- * deletes share one transaction: a half-finished delete would leave tokens
- * pointing at media that no longer exists.
+ * Everything referencing the media row goes first — its own tokens and
+ * batches, plus the per-media counters and group memberships a group token
+ * left behind. All of it shares one transaction: a half-finished delete would
+ * leave rows pointing at media that no longer exists.
  */
 export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
   const existing = await getMediaById(id);
@@ -56,10 +62,12 @@ export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
   }
   const db = useDb();
   const deleted = db.transaction((tx) => {
+    tx.delete(tokenMediaUsage).where(eq(tokenMediaUsage.mediaId, id)).run();
+    const removedFromGroups = tx.delete(mediaGroupItems).where(eq(mediaGroupItems.mediaId, id)).run().changes;
     const deletedTokens = tx.delete(tokens).where(eq(tokens.mediaId, id)).run().changes;
     const deletedBatches = tx.delete(batches).where(eq(batches.mediaId, id)).run().changes;
     tx.delete(media).where(eq(media.id, id)).run();
-    return { deletedTokens, deletedBatches };
+    return { deletedTokens, deletedBatches, removedFromGroups };
   });
   forgetAccessibility(id);
   return deleted;

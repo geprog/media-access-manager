@@ -122,6 +122,36 @@ interface MediaItem {
 - If `usage_limit` is set and `usage_count >= usage_limit` → invalid
 - If valid: increment `usage_count`, return embed; if invalid: show "Contact support" message
 
+### Media groups and group tokens
+
+A token points at **either one media or one media group** — never both, never
+neither. A group is a named, reusable set of media, so one link (and one
+printed QR code) can hand out several videos at once.
+
+A group token's limits are read **per media, not per token**:
+
+- `starts_at` / `expires_at` are shared: the date window either is open or
+  closes the whole group at once.
+- `usage_limit` is a budget for _each_ media. A visitor who watched one video
+  to its limit keeps every other video of the group untouched.
+
+Per-media counts live in `token_media_usage (token_id, media_id, usage_count)`.
+Rows appear on first use, so a missing row simply means "not watched yet".
+`tokens.usage_count` keeps the total across media for the admin overview only;
+nothing is validated against it for a group token.
+
+**Public flow for a group token**:
+
+1. `/{token}` lists the group's media with each one's own remaining access.
+   Looking at the list costs nothing.
+2. The visitor picks one and lands on `/{token}/{mediaId}`, which spends a view
+   on that media alone and renders the player.
+3. Media the token can no longer open stay on the list, marked as used up
+   rather than hidden — the visitor sees what they had and can ask for more.
+
+Because the counts are per media, a partly used-up group is a normal state, not
+an error: some entries play, others are closed.
+
 ---
 
 ## 3. Admin: Single Global Password
@@ -131,9 +161,10 @@ interface MediaItem {
   - Session/cookie after successful login
 - **Admin capabilities**:
   - List media (from all providers)
-  - Create tokens per media (single or batch)
+  - Create and edit media groups (a named set of media)
+  - Create tokens per media _or_ per group (single or batch)
   - Batch token generation with QR codes (ZIP download)
-  - List tokens per media
+  - List tokens per media and per group
 - **Removed**:
   - User CRUD
   - Analytics pages and services
@@ -142,11 +173,23 @@ interface MediaItem {
 
 ## 4. Public Flow: View with Token
 
+**Single-media token**
+
 1. User visits `/{token}` (or similar).
 2. Validate token (dates + usage limit).
 3. If invalid → show message: "This link is no longer valid. Please contact support."
 4. If valid → fetch embed via provider, increment `usage_count`, render player.
 5. No device tracking, no analytics.
+
+**Group token**
+
+1. User visits `/{token}` and gets the group's media list, each entry showing
+   its own remaining views. Listing spends nothing.
+2. User picks one and lands on `/{token}/{mediaId}`.
+3. Validate the date window plus _that media's_ count; if it is used up, the
+   media is refused while the rest of the group stays open.
+4. If valid → fetch embed via provider, increment that media's `usage_count`,
+   render player, and offer the way back to the list.
 
 ---
 
@@ -205,6 +248,7 @@ media-access-manager/
 │   ├── api/
 │   │   ├── auth/           # login, logout (global password)
 │   │   ├── media/          # list media (from providers)
+│   │   ├── groups/         # CRUD media groups
 │   │   ├── tokens/         # CRUD tokens, batch create, list by media
 │   │   │   └── batch/      # POST batch, GET batch/:id/qr-zip
 │   │   └── access/         # validate token, return embed
@@ -212,6 +256,7 @@ media-access-manager/
 │   │   ├── authService.ts
 │   │   ├── mediaService.ts
 │   │   ├── tokenService.ts
+│   │   ├── mediaGroupService.ts
 │   │   ├── qrService.ts    # QR generation, batch ZIP
 │   │   └── providers/
 │   │       ├── types.ts   # MediaProvider interface
@@ -226,9 +271,14 @@ media-access-manager/
 │   ├── index.vue          # Media list
 │   ├── media/
 │   │   └── [id].vue       # Media detail + tokens + batch gen
+│   ├── groups/
+│   │   ├── index.vue      # Media group list
+│   │   └── [id].vue       # Group detail + its media + tokens + batch gen
 │   ├── tokens/
 │   │   └── batch.vue      # Batch token generation (select media, count, QR ZIP)
-│   └── [token].vue        # Public access
+│   └── [token]/
+│       ├── index.vue      # Public access: player, or a group's media list
+│       └── [mediaId].vue  # Public access to one media of a group
 ├── utils/theme.ts         # Brand palette + theme CSS variables
 └── plugins/theme.ts       # Applies the theme from runtimeConfig
 ```
@@ -237,11 +287,21 @@ media-access-manager/
 
 ## 8. Database Schema
 
-| Table     | Columns                                                                                                        |
-| --------- | -------------------------------------------------------------------------------------------------------------- |
-| `media`   | id, provider_id, title, provider_config (JSON), created_at                                                     |
-| `tokens`  | id, token, media_id, batch_id (nullable FK), name, starts_at, expires_at, usage_limit, usage_count, created_at |
-| `batches` | id, media_id, name, created_at                                                                                 |
+| Table               | Columns                                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `media`             | id, provider_id, title, provider_config (JSON), created_at                                                                                     |
+| `media_groups`      | id, name, created_at                                                                                                                           |
+| `media_group_items` | group_id, media_id, position (PK: group_id + media_id)                                                                                         |
+| `tokens`            | id, token, media_id (nullable), group_id (nullable), batch_id (nullable FK), name, starts_at, expires_at, usage_limit, usage_count, created_at |
+| `batches`           | id, media_id (nullable), group_id (nullable), name, created_at                                                                                 |
+| `token_media_usage` | token_id, media_id, usage_count (PK: token_id + media_id)                                                                                      |
+
+Exactly one of `media_id` and `group_id` is set on `tokens` and on `batches`.
+
+SQLite can only relax a column constraint by rebuilding the table, which means
+dropping tables that others point at. `PRAGMA foreign_keys` is ignored inside a
+transaction and drizzle wraps every migration in one, so `useDb()` lifts
+enforcement around the migration run instead.
 
 ---
 
