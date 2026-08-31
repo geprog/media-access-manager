@@ -1,4 +1,5 @@
-import archiver from 'archiver';
+import type { Archiver } from 'archiver';
+import { ZipArchive } from 'archiver';
 import { PageSizes, PDFDocument, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
@@ -70,9 +71,9 @@ export async function createQRZipArchive(
   batchName = '',
   sizeCm = 5,
   showToken = false,
-): Promise<archiver.Archiver> {
+): Promise<Archiver> {
   const sizePx = cmToPixels(sizeCm);
-  const archive = archiver('zip', { zlib: { level: 9 } });
+  const archive = new ZipArchive({ zlib: { level: 9 } });
   const baseUrl = appUrl.replace(/\/$/, '');
   const prefix = batchName ? `${sanitizeFilename(batchName)}-` : '';
   for (let i = 0; i < tokens.length; i++) {

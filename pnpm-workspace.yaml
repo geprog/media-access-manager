@@ -8,16 +8,16 @@ shellEmulator: true
 strictPeerDependencies: true
 
 trustPolicy: no-downgrade
-overrides:
-  reka-ui@2.6.0: 2.6.1
+
+trustPolicyIgnoreAfter: 267840
 
 ignoredBuiltDependencies:
+  - better-sqlite3
   - core-js
   - unrs-resolver
 
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - bcrypt
-  - better-sqlite3
   - esbuild
   - vue-demi
