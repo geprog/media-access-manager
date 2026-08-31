@@ -4,7 +4,7 @@ WORKDIR /app
 EXPOSE 3000
 
 COPY .output ./
-COPY server/database/migrations /app/server/database/migrations
+COPY server/db/migrations /app/server/db/migrations
 RUN mkdir -p /app/data && chown node:node /app/data
 
 USER node
