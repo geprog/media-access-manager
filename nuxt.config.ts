@@ -7,7 +7,10 @@ export default defineNuxtConfig({
   telemetry: false,
   ssr: false,
   runtimeConfig: {
-    adminPassword: 'password',
+    // Empty on purpose: a deployment must set `NUXT_ADMIN_PASSWORD`, and until
+    // it does every login is refused. Only `$development` fills in a default,
+    // so no built image can ever carry a password someone else knows.
+    adminPassword: '',
     vimeoApiToken: '',
     public: {
       // Where a visitor whose access has ended asks for a new link. Empty
@@ -37,7 +40,20 @@ export default defineNuxtConfig({
     },
     session: {
       name: 'mam-session',
-      password: 'my-secret-password-with-min-32-characters',
+      // Seals the admin session cookie; set through `NUXT_SESSION_PASSWORD`
+      // (at least 32 characters). Empty here for the same reason as
+      // `adminPassword` above.
+      password: '',
+    },
+  },
+  // Development-only credentials, so `pnpm dev` needs no `.env` while a
+  // production build ships without a usable default for either secret.
+  $development: {
+    runtimeConfig: {
+      adminPassword: 'password',
+      session: {
+        password: 'my-secret-password-with-min-32-characters',
+      },
     },
   },
   modules: ['@nuxt/ui', '@nuxtjs/i18n', 'nuxt-auth-utils'],

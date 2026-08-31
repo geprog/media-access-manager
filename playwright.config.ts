@@ -6,6 +6,12 @@ import { defineConfig } from '@playwright/test';
 // an address, so the test server always gets one.
 process.env.NUXT_PUBLIC_SUPPORT_EMAIL ||= 'support@example.com';
 
+// The suite runs a production build, where the admin password and the session
+// secret have no defaults (they only exist under `$development` in
+// `nuxt.config.ts`), so the test server is handed its own.
+process.env.NUXT_ADMIN_PASSWORD ||= 'password';
+process.env.NUXT_SESSION_PASSWORD ||= 'e2e-session-password-with-min-32-chars';
+
 export default defineConfig<ConfigOptions>({
   testDir: './e2e/tests',
   fullyParallel: false,
