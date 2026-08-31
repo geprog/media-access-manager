@@ -32,9 +32,9 @@ interface VimeoDomainPage {
  * so the wording stays translatable and white-label friendly.
  */
 const VIMEO_SETUP_INSTRUCTIONS = [
-  'accessibility_setup_vimeo_open_privacy',
-  'accessibility_setup_vimeo_hide_from_vimeo',
-  'accessibility_setup_vimeo_embed_specific_domains',
+  'accessibility_setup_vimeo_open_share',
+  'accessibility_setup_vimeo_privacy_option',
+  'accessibility_setup_vimeo_open_embed',
   'accessibility_setup_vimeo_add_domain',
   'accessibility_setup_vimeo_recheck',
 ];
