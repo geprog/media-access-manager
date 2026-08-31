@@ -136,5 +136,7 @@
   "public_open_group_details": "Open group details",
   "public_group_empty": "There is nothing to watch behind this link at the moment. Please contact support.",
   "media_groups": "Part of groups",
-  "public_group_unavailable": "Not available"
+  "public_group_unavailable": "Not available",
+  "footer_contrib_question": "Questions, wishes or something not working?",
+  "footer_contrib_link": "Ask on GitHub"
 }

@@ -35,11 +35,31 @@
     <main class="flex-1 p-4">
       <slot />
     </main>
+    <!-- Points admins at the upstream project. Visitors on a token page have no
+         session, so the white-label surface stays free of our branding. -->
+    <footer
+      v-if="loggedIn"
+      class="text-muted flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t px-4 py-3 text-sm dark:border-t-gray-800"
+    >
+      <span>{{ t('footer_contrib_question') }}</span>
+      <ULink
+        :to="repositoryUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-primary inline-flex items-center gap-1 font-medium"
+      >
+        <UIcon name="i-simple-icons-github" class="size-4" />
+        {{ t('footer_contrib_link') }}
+      </ULink>
+    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui';
+
+/** Upstream project, where admins report bugs and ask questions. */
+const repositoryUrl = 'https://github.com/geprog/media-access-manager';
 
 const { loggedIn } = useUserSession();
 const { title, logo, logoDark, logoHeight } = useRuntimeConfig().public.theme;
