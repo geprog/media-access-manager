@@ -198,15 +198,16 @@ an error: some entries play, others are closed.
 Theme config, set per deployment through `NUXT_PUBLIC_THEME_*` environment
 variables. See [theming.md](./theming.md) for the full reference.
 
-| Setting              | Description                             | Example      |
-| -------------------- | --------------------------------------- | ------------ |
-| `title`              | Brand name                              | `Acme Media` |
-| `logo` / `logoDark`  | Logo URL or path, per color mode        | `/logo.svg`  |
-| `favicon`            | Browser tab icon                        | `/icon.svg`  |
-| `colors.primary`     | Brand color, or a Tailwind palette name | `#0f4c81`    |
-| `colors.neutral`     | Greys for text, surfaces and borders    | `slate`      |
-| `radius` / `spacing` | Roundness and density of the whole UI   | `0.5rem`     |
-| `container`          | Maximum content width                   | `72rem`      |
+| Setting                  | Description                             | Example                |
+| ------------------------ | --------------------------------------- | ---------------------- |
+| `title`                  | Brand name                              | `Acme Media`           |
+| `logo` / `logoDark`      | Logo URL or path, per color mode        | `/logo.svg`            |
+| `favicon`                | Browser tab icon                        | `/icon.svg`            |
+| `provider.url` / `.name` | Footer link to the app's provider       | `https://acme.example` |
+| `colors.primary`         | Brand color, or a Tailwind palette name | `#0f4c81`              |
+| `colors.neutral`         | Greys for text, surfaces and borders    | `slate`                |
+| `radius` / `spacing`     | Roundness and density of the whole UI   | `0.5rem`               |
+| `container`              | Maximum content width                   | `72rem`                |
 
 Implementation:
 

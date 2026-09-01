@@ -138,6 +138,7 @@
   "public_group_empty": "Hinter diesem Link gibt es derzeit nichts zu sehen. Bitte kontaktieren Sie den Support.",
   "media_groups": "Teil von Gruppen",
   "public_group_unavailable": "Nicht verfügbar",
+  "footer_provider": "Angeboten von",
   "footer_contrib_question": "Fragen, Wünsche oder etwas funktioniert nicht?",
   "footer_contrib_link": "Auf GitHub nachfragen"
 }

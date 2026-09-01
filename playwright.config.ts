@@ -6,6 +6,11 @@ import { defineConfig } from '@playwright/test';
 // an address, so the test server always gets one.
 process.env.NUXT_PUBLIC_SUPPORT_EMAIL ||= 'support@example.com';
 
+// The footer only links to the deployment's provider once one is configured,
+// so the test server publishes one.
+process.env.NUXT_PUBLIC_THEME_PROVIDER_URL ||= 'https://provider.example';
+process.env.NUXT_PUBLIC_THEME_PROVIDER_NAME ||= 'Example Provider';
+
 // The suite runs a production build, where the admin password and the session
 // secret have no defaults (they only exist under `$development` in
 // `nuxt.config.ts`), so the test server is handed its own.

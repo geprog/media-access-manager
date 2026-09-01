@@ -8,19 +8,21 @@ All settings are optional; anything left empty keeps the default.
 
 ## Settings
 
-| Variable                           | Example          | Effect                                                         |
-| ---------------------------------- | ---------------- | -------------------------------------------------------------- |
-| `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`     | Company name in the header and the browser tab                 |
-| `NUXT_PUBLIC_THEME_LOGO`           | `/logo.svg`      | Logo next to the name                                          |
-| `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/logo-dark.svg` | Logo variant used in dark mode                                 |
-| `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`         | Rendered logo height (default `2rem`), width follows the ratio |
-| `NUXT_PUBLIC_THEME_FAVICON`        | `/favicon.svg`   | Browser tab icon                                               |
-| `NUXT_PUBLIC_THEME_COLORS_PRIMARY` | `#0f4c81`        | Brand color: buttons, links, focus rings                       |
-| `NUXT_PUBLIC_THEME_COLORS_NEUTRAL` | `slate`          | Greys: text, surfaces, borders                                 |
-| `NUXT_PUBLIC_THEME_COLORS_ERROR`   | `#c0392b`        | Also `_SECONDARY`, `_SUCCESS`, `_INFO`, `_WARNING`             |
-| `NUXT_PUBLIC_THEME_RADIUS`         | `0.75rem`        | Roundness of buttons, inputs, cards, dialogs                   |
-| `NUXT_PUBLIC_THEME_SPACING`        | `0.3rem`         | Density: scales every padding, margin and gap                  |
-| `NUXT_PUBLIC_THEME_CONTAINER`      | `72rem`          | Maximum content width                                          |
+| Variable                           | Example                | Effect                                                          |
+| ---------------------------------- | ---------------------- | --------------------------------------------------------------- |
+| `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`           | Company name in the header and the browser tab                  |
+| `NUXT_PUBLIC_THEME_LOGO`           | `/logo.svg`            | Logo next to the name                                           |
+| `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/logo-dark.svg`       | Logo variant used in dark mode                                  |
+| `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`               | Rendered logo height (default `2rem`), width follows the ratio  |
+| `NUXT_PUBLIC_THEME_FAVICON`        | `/favicon.svg`         | Browser tab icon                                                |
+| `NUXT_PUBLIC_THEME_PROVIDER_URL`   | `https://acme.example` | Footer link to whoever provides the app (company page, imprint) |
+| `NUXT_PUBLIC_THEME_PROVIDER_NAME`  | `Acme GmbH`            | Label of that link, defaults to the title                       |
+| `NUXT_PUBLIC_THEME_COLORS_PRIMARY` | `#0f4c81`              | Brand color: buttons, links, focus rings                        |
+| `NUXT_PUBLIC_THEME_COLORS_NEUTRAL` | `slate`                | Greys: text, surfaces, borders                                  |
+| `NUXT_PUBLIC_THEME_COLORS_ERROR`   | `#c0392b`              | Also `_SECONDARY`, `_SUCCESS`, `_INFO`, `_WARNING`              |
+| `NUXT_PUBLIC_THEME_RADIUS`         | `0.75rem`              | Roundness of buttons, inputs, cards, dialogs                    |
+| `NUXT_PUBLIC_THEME_SPACING`        | `0.3rem`               | Density: scales every padding, margin and gap                   |
+| `NUXT_PUBLIC_THEME_CONTAINER`      | `72rem`                | Maximum content width                                           |
 
 Logos and favicons are URLs. Either drop the files into `public/` and reference
 them as `/logo.svg`, or point at an absolute URL on the customer's CDN.
@@ -94,6 +96,7 @@ any layer no matter in which order the stylesheets load.
 NUXT_PUBLIC_THEME_TITLE=Acme Media
 NUXT_PUBLIC_THEME_LOGO=/acme-logo.svg
 NUXT_PUBLIC_THEME_FAVICON=/acme-favicon.svg
+NUXT_PUBLIC_THEME_PROVIDER_URL=https://acme.example/imprint
 NUXT_PUBLIC_THEME_COLORS_PRIMARY="#0f4c81"
 NUXT_PUBLIC_THEME_COLORS_NEUTRAL=slate
 NUXT_PUBLIC_THEME_RADIUS=0.5rem

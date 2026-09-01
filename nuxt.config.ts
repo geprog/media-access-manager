@@ -35,6 +35,13 @@ export default defineNuxtConfig({
         radius: '',
         spacing: '',
         container: '',
+        // Who runs this deployment. A `url` publishes a footer link – company
+        // page, imprint – that visitors see too, because the branded surface
+        // is theirs. `name` labels it and falls back to `title`.
+        provider: {
+          name: '',
+          url: '',
+        },
       },
     },
     session: {

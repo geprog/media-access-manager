@@ -4,8 +4,8 @@ test.describe('Admin Auth', () => {
   test('redirects to login when not authenticated', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/login/);
-    // The contrib footer is for admins; a white-label surface without a session
-    // must not advertise the upstream project.
+    // The login page opts out of the layout entirely, so it carries neither the
+    // contrib link nor the provider one.
     await expect(page.locator('footer')).toBeHidden();
   });
 
@@ -25,5 +25,7 @@ test.describe('Admin Auth', () => {
     await expect(page.getByText('Media Access Manager Admin')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Ask on GitHub' }))
       .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
+    await expect(page.getByRole('link', { name: 'Example Provider' }))
+      .toHaveAttribute('href', 'https://provider.example');
   });
 });

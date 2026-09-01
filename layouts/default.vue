@@ -35,22 +35,37 @@
     <main class="flex-1 p-4">
       <slot />
     </main>
-    <!-- Points admins at the upstream project. Visitors on a token page have no
-         session, so the white-label surface stays free of our branding. -->
     <footer
-      v-if="loggedIn"
-      class="text-muted flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t px-4 py-3 text-sm dark:border-t-gray-800"
+      v-if="loggedIn || provider.url"
+      class="text-muted flex flex-col items-center gap-1 border-t px-4 py-3 text-sm dark:border-t-gray-800"
     >
-      <span>{{ t('footer_contrib_question') }}</span>
-      <ULink
-        :to="repositoryUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-primary inline-flex items-center gap-1 font-medium"
-      >
-        <UIcon name="i-simple-icons-github" class="size-4" />
-        {{ t('footer_contrib_link') }}
-      </ULink>
+      <!-- Names whoever runs this deployment, to visitors as well: the branded
+           surface is theirs, so the link points at them and not at us. -->
+      <div v-if="provider.url" class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+        <span>{{ t('footer_provider') }}</span>
+        <ULink
+          :to="provider.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary font-medium"
+        >
+          {{ provider.name || title }}
+        </ULink>
+      </div>
+      <!-- Points admins at the upstream project. Visitors on a token page have
+           no session, so the white-label surface stays free of our branding. -->
+      <div v-if="loggedIn" class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+        <span>{{ t('footer_contrib_question') }}</span>
+        <ULink
+          :to="repositoryUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary inline-flex items-center gap-1 font-medium"
+        >
+          <UIcon name="i-simple-icons-github" class="size-4" />
+          {{ t('footer_contrib_link') }}
+        </ULink>
+      </div>
     </footer>
   </div>
 </template>
@@ -62,7 +77,7 @@ import type { NavigationMenuItem } from '@nuxt/ui';
 const repositoryUrl = 'https://github.com/geprog/media-access-manager';
 
 const { loggedIn } = useUserSession();
-const { title, logo, logoDark, logoHeight } = useRuntimeConfig().public.theme;
+const { title, logo, logoDark, logoHeight, provider } = useRuntimeConfig().public.theme;
 
 const route = useRoute();
 const { t } = useI18n();
