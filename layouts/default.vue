@@ -50,7 +50,7 @@
       <slot />
     </main>
     <footer
-      v-if="loggedIn || provider.url || poweredBy.name"
+      v-if="provider.url || poweredBy.name"
       class="text-muted flex flex-col items-center gap-1 border-t px-4 py-3 text-sm dark:border-t-gray-800"
     >
       <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
@@ -86,7 +86,7 @@
       </div>
       <!-- Invites admins to report bugs; a visitor has nothing to report
            upstream and already sees the credit above. -->
-      <div v-if="loggedIn" class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+      <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
         <span>{{ t('footer_contrib_question') }}</span>
         <ULink
           :to="repositoryUrl"
