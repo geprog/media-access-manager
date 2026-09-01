@@ -241,15 +241,15 @@ test.describe('Media and Tokens', () => {
     await expect(page.locator('iframe[title="E2E Public Video"]')).toBeVisible();
     // The admin hint belongs to the admin UI, not to a visitor's token page.
     await expect(page.getByText('Media Access Manager Admin')).toHaveCount(0);
-    // The provider is linked in the header and the footer, the upstream project
-    // is credited next to it – but the bug-report invitation stays with admins.
-    await expect(page.getByRole('link', { name: 'Visit Example Provider' }))
-      .toHaveAttribute('href', 'https://provider.example');
-    await expect(page.getByRole('link', { name: 'Example Provider', exact: true }))
-      .toHaveAttribute('href', 'https://provider.example');
-    await expect(page.getByRole('link', { name: 'Media Access Manager', exact: true }))
-      .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
-    await expect(page.getByRole('link', { name: 'Ask on GitHub' })).toHaveCount(0);
+    // The publisher is linked in the header and the footer, with the upstream
+    // project credited next to it. The bug-report invitation shows for everyone.
+    await expect(page.getByRole('link', { name: 'Visit Example Publisher' }))
+      .toHaveAttribute('href', 'https://publisher.example');
+    await expect(page.getByRole('link', { name: 'Example Publisher', exact: true }))
+      .toHaveAttribute('href', 'https://publisher.example');
+    await expect(page.getByRole('link', { name: 'Example Studio' }))
+      .toHaveAttribute('href', 'https://studio.example');
+    await expect(page.getByRole('link', { name: 'Ask on GitHub' })).toBeVisible();
   });
 
   test('offers a mail link for further access once a token has expired', async ({ page }, testInfo) => {

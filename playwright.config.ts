@@ -6,10 +6,13 @@ import { defineConfig } from '@playwright/test';
 // an address, so the test server always gets one.
 process.env.NUXT_PUBLIC_SUPPORT_EMAIL ||= 'support@example.com';
 
-// Header and footer only link to a provider once the deployment configures one,
-// so the test server publishes one.
-process.env.NUXT_PUBLIC_THEME_PROVIDER_URL ||= 'https://provider.example';
-process.env.NUXT_PUBLIC_THEME_PROVIDER_NAME ||= 'Example Provider';
+// Header and footer name the publisher and credit whoever built the deployment.
+// Assigned outright rather than with `||=`: these are asserted on, and a
+// developer's own `.env` would otherwise change what the tests see.
+process.env.NUXT_PUBLIC_PUBLISHER_URL = 'https://publisher.example';
+process.env.NUXT_PUBLIC_PUBLISHER_NAME = 'Example Publisher';
+process.env.NUXT_PUBLIC_POWERED_BY_URL = 'https://studio.example';
+process.env.NUXT_PUBLIC_POWERED_BY_NAME = 'Example Studio';
 
 // The suite runs a production build, where the admin password and the session
 // secret have no defaults (they only exist under `$development` in

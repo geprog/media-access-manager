@@ -198,16 +198,15 @@ an error: some entries play, others are closed.
 Theme config, set per deployment through `NUXT_PUBLIC_THEME_*` environment
 variables. See [theming.md](./theming.md) for the full reference.
 
-| Setting                  | Description                                      | Example                |
-| ------------------------ | ------------------------------------------------ | ---------------------- |
-| `title`                  | Brand name                                       | `Acme Media`           |
-| `logo` / `logoDark`      | Logo URL or path, per color mode                 | `/logo.svg`            |
-| `favicon`                | Browser tab icon                                 | `/icon.svg`            |
-| `provider.url` / `.name` | Link to the app's provider, in header and footer | `https://acme.example` |
-| `colors.primary`         | Brand color, or a Tailwind palette name          | `#0f4c81`              |
-| `colors.neutral`         | Greys for text, surfaces and borders             | `slate`                |
-| `radius` / `spacing`     | Roundness and density of the whole UI            | `0.5rem`               |
-| `container`              | Maximum content width                            | `72rem`                |
+| Setting              | Description                             | Example      |
+| -------------------- | --------------------------------------- | ------------ |
+| `title`              | Brand name                              | `Acme Media` |
+| `logo` / `logoDark`  | Logo URL or path, per color mode        | `/logo.svg`  |
+| `favicon`            | Browser tab icon                        | `/icon.svg`  |
+| `colors.primary`     | Brand color, or a Tailwind palette name | `#0f4c81`    |
+| `colors.neutral`     | Greys for text, surfaces and borders    | `slate`      |
+| `radius` / `spacing` | Roundness and density of the whole UI   | `0.5rem`     |
+| `container`          | Maximum content width                   | `72rem`      |
 
 Implementation:
 
@@ -352,6 +351,10 @@ ENCRYPTION_KEY=...           # For Vimeo passwords
 
 # Support contact offered on an expired access link (optional)
 NUXT_PUBLIC_SUPPORT_EMAIL=support@acme.example
+
+# Publisher of the media, linked in header and footer
+NUXT_PUBLIC_PUBLISHER_NAME=Acme GmbH
+NUXT_PUBLIC_PUBLISHER_URL=https://acme.example
 
 # Footer credit, defaults to the upstream project
 NUXT_PUBLIC_POWERED_BY_NAME=Acme Studio

@@ -21,18 +21,18 @@
           <span class="text-lg font-semibold">
             {{ title }}
           </span>
-          <!-- Leads to whoever provides this deployment, as a separate icon so
-               the brand itself stays plain text. The footer names them again. -->
-          <UTooltip v-if="provider.url" :text="visitProvider">
+          <!-- Leads to whoever publishes the media here, as a separate icon
+               so the brand itself stays plain text. The footer names them again. -->
+          <UTooltip v-if="publisher.url" :text="visitPublisher">
             <UButton
-              :to="provider.url"
+              :to="publisher.url"
               target="_blank"
               rel="noopener noreferrer"
               icon="i-heroicons-globe-alt"
               color="neutral"
               variant="ghost"
               size="sm"
-              :aria-label="visitProvider"
+              :aria-label="visitPublisher"
             />
           </UTooltip>
           <!-- Tells admins which app the branded UI belongs to. Visitors on a
@@ -50,24 +50,24 @@
       <slot />
     </main>
     <footer
-      v-if="provider.url || poweredBy.name"
+      v-if="publisher.url || poweredBy.name"
       class="text-muted flex flex-col items-center gap-1 border-t px-4 py-3 text-sm dark:border-t-gray-800"
     >
       <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-        <!-- Names whoever runs this deployment, to visitors as well: the branded
-             surface is theirs, so the link points at them and not at us. -->
-        <template v-if="provider.url">
-          <span>{{ t('footer_provider') }}</span>
+        <!-- Names whoever publishes the media here, to visitors as well: the
+             branded surface is theirs, so the link points at them, not at us. -->
+        <template v-if="publisher.url">
+          <span>{{ t('footer_publisher') }}</span>
           <ULink
-            :to="provider.url"
+            :to="publisher.url"
             target="_blank"
             rel="noopener noreferrer"
             class="text-primary font-medium"
           >
-            {{ providerName }}
+            {{ publisherName }}
           </ULink>
         </template>
-        <span v-if="provider.url && poweredBy.name" aria-hidden="true">·</span>
+        <span v-if="publisher.url && poweredBy.name" aria-hidden="true">·</span>
         <!-- Credits whoever built this deployment right next to them. Without
              a URL the credit still shows, just unlinked. -->
         <template v-if="poweredBy.name">
@@ -109,15 +109,15 @@ import type { NavigationMenuItem } from '@nuxt/ui';
 const repositoryUrl = 'https://github.com/geprog/media-access-manager';
 
 const { loggedIn } = useUserSession();
-const { poweredBy } = useRuntimeConfig().public;
-const { title, logo, logoDark, logoHeight, provider } = useRuntimeConfig().public.theme;
+const { publisher, poweredBy } = useRuntimeConfig().public;
+const { title, logo, logoDark, logoHeight } = useRuntimeConfig().public.theme;
 
 const route = useRoute();
 const { t } = useI18n();
 
-// A deployment that configures no provider name is still identified by its brand.
-const providerName = provider.name || title;
-const visitProvider = computed(() => t('header_visit_provider', { name: providerName }));
+// A deployment that names no publisher is still identified by its brand.
+const publisherName = publisher.name || title;
+const visitPublisher = computed(() => t('header_visit_publisher', { name: publisherName }));
 const path = computed(() => route.path);
 
 // Visitors on a public token page have no admin session, so the layout shows

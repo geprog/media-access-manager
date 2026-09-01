@@ -5,7 +5,7 @@ test.describe('Admin Auth', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/login/);
     // The login page opts out of the layout entirely, so it carries neither the
-    // contrib link nor the provider one.
+    // publisher link nor the credit.
     await expect(page.locator('footer')).toBeHidden();
   });
 
@@ -23,13 +23,13 @@ test.describe('Admin Auth', () => {
     await expect(page).toHaveURL('/', { timeout: 5000 });
     await expect(page.getByRole('heading', { name: 'Media', exact: true })).toBeVisible();
     await expect(page.getByText('Media Access Manager Admin')).toBeVisible();
-    // The provider is linked twice: from the header icon and from the footer.
-    await expect(page.getByRole('link', { name: 'Visit Example Provider' }))
-      .toHaveAttribute('href', 'https://provider.example');
-    await expect(page.getByRole('link', { name: 'Example Provider', exact: true }))
-      .toHaveAttribute('href', 'https://provider.example');
-    await expect(page.getByRole('link', { name: 'Media Access Manager', exact: true }))
-      .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
+    // The publisher is linked twice: from the header icon and from the footer.
+    await expect(page.getByRole('link', { name: 'Visit Example Publisher' }))
+      .toHaveAttribute('href', 'https://publisher.example');
+    await expect(page.getByRole('link', { name: 'Example Publisher', exact: true }))
+      .toHaveAttribute('href', 'https://publisher.example');
+    await expect(page.getByRole('link', { name: 'Example Studio' }))
+      .toHaveAttribute('href', 'https://studio.example');
     await expect(page.getByRole('link', { name: 'Ask on GitHub' }))
       .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
   });
