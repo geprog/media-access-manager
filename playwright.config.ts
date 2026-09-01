@@ -6,8 +6,9 @@ import { defineConfig } from '@playwright/test';
 // an address, so the test server always gets one.
 process.env.NUXT_PUBLIC_SUPPORT_EMAIL ||= 'support@example.com';
 
-// The footer only links to the deployment's provider once one is configured,
-// so the test server publishes one.
+// The header brand and the footer only link somewhere once the deployment
+// configures a URL, so the test server gets both.
+process.env.NUXT_PUBLIC_THEME_URL ||= 'https://brand.example';
 process.env.NUXT_PUBLIC_THEME_PROVIDER_URL ||= 'https://provider.example';
 process.env.NUXT_PUBLIC_THEME_PROVIDER_NAME ||= 'Example Provider';
 

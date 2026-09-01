@@ -19,6 +19,9 @@ export default defineNuxtConfig({
       // set per deployment through `NUXT_PUBLIC_THEME_*`; see `docs/theming.md`.
       theme: {
         title: 'Media Access Manager',
+        // The deployment's own site, linked from an icon next to the brand
+        // in the header. Empty publishes no such link.
+        url: '',
         logo: '',
         logoDark: '',
         logoHeight: '2rem',

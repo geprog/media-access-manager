@@ -21,6 +21,20 @@
           <span class="text-lg font-semibold">
             {{ title }}
           </span>
+          <!-- Leads to the deployment's own site, as a separate icon so the
+               brand itself stays plain text. -->
+          <UTooltip v-if="url" :text="t('header_website')">
+            <UButton
+              :to="url"
+              target="_blank"
+              rel="noopener noreferrer"
+              icon="i-heroicons-globe-alt"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :aria-label="t('header_website')"
+            />
+          </UTooltip>
           <!-- Tells admins which app the branded UI belongs to. Visitors on a
                token page have no session, so they never see it. -->
           <UBadge
@@ -77,7 +91,7 @@ import type { NavigationMenuItem } from '@nuxt/ui';
 const repositoryUrl = 'https://github.com/geprog/media-access-manager';
 
 const { loggedIn } = useUserSession();
-const { title, logo, logoDark, logoHeight, provider } = useRuntimeConfig().public.theme;
+const { title, url, logo, logoDark, logoHeight, provider } = useRuntimeConfig().public.theme;
 
 const route = useRoute();
 const { t } = useI18n();

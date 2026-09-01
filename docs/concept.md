@@ -201,6 +201,7 @@ variables. See [theming.md](./theming.md) for the full reference.
 | Setting                  | Description                             | Example                |
 | ------------------------ | --------------------------------------- | ---------------------- |
 | `title`                  | Brand name                              | `Acme Media`           |
+| `url`                    | Site linked next to the header brand    | `https://acme.example` |
 | `logo` / `logoDark`      | Logo URL or path, per color mode        | `/logo.svg`            |
 | `favicon`                | Browser tab icon                        | `/icon.svg`            |
 | `provider.url` / `.name` | Footer link to the app's provider       | `https://acme.example` |

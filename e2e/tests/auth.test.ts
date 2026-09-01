@@ -23,6 +23,8 @@ test.describe('Admin Auth', () => {
     await expect(page).toHaveURL('/', { timeout: 5000 });
     await expect(page.getByRole('heading', { name: 'Media', exact: true })).toBeVisible();
     await expect(page.getByText('Media Access Manager Admin')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Visit website' }))
+      .toHaveAttribute('href', 'https://brand.example');
     await expect(page.getByRole('link', { name: 'Ask on GitHub' }))
       .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
     await expect(page.getByRole('link', { name: 'Example Provider' }))

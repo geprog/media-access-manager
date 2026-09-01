@@ -11,6 +11,7 @@ All settings are optional; anything left empty keeps the default.
 | Variable                           | Example                | Effect                                                          |
 | ---------------------------------- | ---------------------- | --------------------------------------------------------------- |
 | `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`           | Company name in the header and the browser tab                  |
+| `NUXT_PUBLIC_THEME_URL`            | `https://acme.example` | Site linked from a globe icon next to the brand                 |
 | `NUXT_PUBLIC_THEME_LOGO`           | `/logo.svg`            | Logo next to the name                                           |
 | `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/logo-dark.svg`       | Logo variant used in dark mode                                  |
 | `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`               | Rendered logo height (default `2rem`), width follows the ratio  |
@@ -94,6 +95,7 @@ any layer no matter in which order the stylesheets load.
 
 ```env
 NUXT_PUBLIC_THEME_TITLE=Acme Media
+NUXT_PUBLIC_THEME_URL=https://acme.example
 NUXT_PUBLIC_THEME_LOGO=/acme-logo.svg
 NUXT_PUBLIC_THEME_FAVICON=/acme-favicon.svg
 NUXT_PUBLIC_THEME_PROVIDER_URL=https://acme.example/imprint
