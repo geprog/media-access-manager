@@ -8,22 +8,21 @@ All settings are optional; anything left empty keeps the default.
 
 ## Settings
 
-| Variable                           | Example                | Effect                                                          |
-| ---------------------------------- | ---------------------- | --------------------------------------------------------------- |
-| `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`           | Company name in the header and the browser tab                  |
-| `NUXT_PUBLIC_THEME_URL`            | `https://acme.example` | Site linked from a globe icon next to the brand                 |
-| `NUXT_PUBLIC_THEME_LOGO`           | `/logo.svg`            | Logo next to the name                                           |
-| `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/logo-dark.svg`       | Logo variant used in dark mode                                  |
-| `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`               | Rendered logo height (default `2rem`), width follows the ratio  |
-| `NUXT_PUBLIC_THEME_FAVICON`        | `/favicon.svg`         | Browser tab icon                                                |
-| `NUXT_PUBLIC_THEME_PROVIDER_URL`   | `https://acme.example` | Footer link to whoever provides the app (company page, imprint) |
-| `NUXT_PUBLIC_THEME_PROVIDER_NAME`  | `Acme GmbH`            | Label of that link, defaults to the title                       |
-| `NUXT_PUBLIC_THEME_COLORS_PRIMARY` | `#0f4c81`              | Brand color: buttons, links, focus rings                        |
-| `NUXT_PUBLIC_THEME_COLORS_NEUTRAL` | `slate`                | Greys: text, surfaces, borders                                  |
-| `NUXT_PUBLIC_THEME_COLORS_ERROR`   | `#c0392b`              | Also `_SECONDARY`, `_SUCCESS`, `_INFO`, `_WARNING`              |
-| `NUXT_PUBLIC_THEME_RADIUS`         | `0.75rem`              | Roundness of buttons, inputs, cards, dialogs                    |
-| `NUXT_PUBLIC_THEME_SPACING`        | `0.3rem`               | Density: scales every padding, margin and gap                   |
-| `NUXT_PUBLIC_THEME_CONTAINER`      | `72rem`                | Maximum content width                                           |
+| Variable                           | Example                | Effect                                                                           |
+| ---------------------------------- | ---------------------- | -------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`           | Company name in the header and the browser tab                                   |
+| `NUXT_PUBLIC_THEME_LOGO`           | `/logo.svg`            | Logo next to the name                                                            |
+| `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/logo-dark.svg`       | Logo variant used in dark mode                                                   |
+| `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`               | Rendered logo height (default `2rem`), width follows the ratio                   |
+| `NUXT_PUBLIC_THEME_FAVICON`        | `/favicon.svg`         | Browser tab icon                                                                 |
+| `NUXT_PUBLIC_THEME_PROVIDER_URL`   | `https://acme.example` | Link to whoever provides the app, as an icon next to the brand and in the footer |
+| `NUXT_PUBLIC_THEME_PROVIDER_NAME`  | `Acme GmbH`            | Label of those links, defaults to the title                                      |
+| `NUXT_PUBLIC_THEME_COLORS_PRIMARY` | `#0f4c81`              | Brand color: buttons, links, focus rings                                         |
+| `NUXT_PUBLIC_THEME_COLORS_NEUTRAL` | `slate`                | Greys: text, surfaces, borders                                                   |
+| `NUXT_PUBLIC_THEME_COLORS_ERROR`   | `#c0392b`              | Also `_SECONDARY`, `_SUCCESS`, `_INFO`, `_WARNING`                               |
+| `NUXT_PUBLIC_THEME_RADIUS`         | `0.75rem`              | Roundness of buttons, inputs, cards, dialogs                                     |
+| `NUXT_PUBLIC_THEME_SPACING`        | `0.3rem`               | Density: scales every padding, margin and gap                                    |
+| `NUXT_PUBLIC_THEME_CONTAINER`      | `72rem`                | Maximum content width                                                            |
 
 Logos and favicons are URLs. Either drop the files into `public/` and reference
 them as `/logo.svg`, or point at an absolute URL on the customer's CDN.
@@ -32,6 +31,20 @@ them as `/logo.svg`, or point at an absolute URL on the customer's CDN.
 > `NUXT_PUBLIC_THEME_COLORS_PRIMARY=#0f4c81` arrives as an empty value and the
 > setting is silently ignored. Write `="#0f4c81"` instead. Shell exports and
 > Docker/Kubernetes environment blocks are unaffected.
+
+## Footer credit
+
+Below the content the app credits whoever built the deployment, next to the
+provider link: _Provided by Acme GmbH · Powered by Media Access Manager_.
+
+| Variable                      | Example                  | Effect                                       |
+| ----------------------------- | ------------------------ | -------------------------------------------- |
+| `NUXT_PUBLIC_POWERED_BY_NAME` | `Acme Studio`            | Who is credited. Empty drops the credit      |
+| `NUXT_PUBLIC_POWERED_BY_URL`  | `https://studio.example` | Where the credit links. Empty leaves it text |
+
+Both default to the upstream project, so an untouched deployment reads
+_Powered by Media Access Manager_. An agency running the app for a customer
+usually points them at itself.
 
 ## Colors
 
@@ -95,7 +108,6 @@ any layer no matter in which order the stylesheets load.
 
 ```env
 NUXT_PUBLIC_THEME_TITLE=Acme Media
-NUXT_PUBLIC_THEME_URL=https://acme.example
 NUXT_PUBLIC_THEME_LOGO=/acme-logo.svg
 NUXT_PUBLIC_THEME_FAVICON=/acme-favicon.svg
 NUXT_PUBLIC_THEME_PROVIDER_URL=https://acme.example/imprint

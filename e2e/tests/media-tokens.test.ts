@@ -241,11 +241,14 @@ test.describe('Media and Tokens', () => {
     await expect(page.locator('iframe[title="E2E Public Video"]')).toBeVisible();
     // The admin hint belongs to the admin UI, not to a visitor's token page.
     await expect(page.getByText('Media Access Manager Admin')).toHaveCount(0);
-    // The deployment's own branding does belong there, the upstream one not.
-    await expect(page.getByRole('link', { name: 'Visit website' }))
-      .toHaveAttribute('href', 'https://brand.example');
-    await expect(page.getByRole('link', { name: 'Example Provider' }))
+    // The provider is linked in the header and the footer, the upstream project
+    // is credited next to it – but the bug-report invitation stays with admins.
+    await expect(page.getByRole('link', { name: 'Visit Example Provider' }))
       .toHaveAttribute('href', 'https://provider.example');
+    await expect(page.getByRole('link', { name: 'Example Provider', exact: true }))
+      .toHaveAttribute('href', 'https://provider.example');
+    await expect(page.getByRole('link', { name: 'Media Access Manager', exact: true }))
+      .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
     await expect(page.getByRole('link', { name: 'Ask on GitHub' })).toHaveCount(0);
   });
 

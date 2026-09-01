@@ -15,13 +15,17 @@ export default defineNuxtConfig({
       // Where a visitor whose access has ended asks for a new link. Empty
       // means no address is published, so the token page offers no mail link.
       supportEmail: '',
+      // Credit in the footer, which visitors see too. Defaults to the upstream
+      // project; whoever builds a deployment for a customer points it at
+      // themselves instead, and an empty name drops the credit altogether.
+      poweredBy: {
+        name: 'Media Access Manager',
+        url: 'https://github.com/geprog/media-access-manager',
+      },
       // White-label theme, applied by `plugins/theme.ts`. Every value is
       // set per deployment through `NUXT_PUBLIC_THEME_*`; see `docs/theming.md`.
       theme: {
         title: 'Media Access Manager',
-        // The deployment's own site, linked from an icon next to the brand
-        // in the header. Empty publishes no such link.
-        url: '',
         logo: '',
         logoDark: '',
         logoHeight: '2rem',
@@ -38,9 +42,10 @@ export default defineNuxtConfig({
         radius: '',
         spacing: '',
         container: '',
-        // Who runs this deployment. A `url` publishes a footer link – company
-        // page, imprint – that visitors see too, because the branded surface
-        // is theirs. `name` labels it and falls back to `title`.
+        // Who runs this deployment. A `url` publishes the link twice – as an
+        // icon next to the brand and in the footer – and visitors see both,
+        // because the branded surface is theirs. `name` labels it and falls
+        // back to `title`.
         provider: {
           name: '',
           url: '',

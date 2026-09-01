@@ -7,7 +7,7 @@
   "login_submit": "Sign in",
   "login_error": "Invalid password",
   "logout": "Log out",
-  "header_website": "Visit website",
+  "header_visit_provider": "Visit {name}",
   "admin_ui_hint": "Media Access Manager Admin",
   "media_list_title": "Media",
   "back_to_media_list": "Back to media list",
@@ -140,6 +140,7 @@
   "media_groups": "Part of groups",
   "public_group_unavailable": "Not available",
   "footer_provider": "Provided by",
+  "footer_powered_by": "Powered by",
   "footer_contrib_question": "Questions, wishes or something not working?",
   "footer_contrib_link": "Ask on GitHub"
 }

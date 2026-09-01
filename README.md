@@ -103,6 +103,7 @@ All settings are environment variables (Nuxt `runtimeConfig`). Copy
 | `NUXT_VIMEO_API_TOKEN`      | for Vimeo         | Vimeo API token used to list your videos and check their privacy settings.        |
 | `NUXT_PUBLIC_SUPPORT_EMAIL` | no                | Address offered to visitors whose access has ended. Empty means no mail link.     |
 | `NUXT_PUBLIC_THEME_*`       | no                | White-label theme, see [docs/theming.md](docs/theming.md).                        |
+| `NUXT_PUBLIC_POWERED_BY_*`  | no                | Name and URL credited in the footer, defaults to the upstream project.            |
 | `PORT`                      | no                | Port to listen on, defaults to `3000`.                                            |
 
 > [!IMPORTANT]

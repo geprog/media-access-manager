@@ -23,11 +23,14 @@ test.describe('Admin Auth', () => {
     await expect(page).toHaveURL('/', { timeout: 5000 });
     await expect(page.getByRole('heading', { name: 'Media', exact: true })).toBeVisible();
     await expect(page.getByText('Media Access Manager Admin')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Visit website' }))
-      .toHaveAttribute('href', 'https://brand.example');
+    // The provider is linked twice: from the header icon and from the footer.
+    await expect(page.getByRole('link', { name: 'Visit Example Provider' }))
+      .toHaveAttribute('href', 'https://provider.example');
+    await expect(page.getByRole('link', { name: 'Example Provider', exact: true }))
+      .toHaveAttribute('href', 'https://provider.example');
+    await expect(page.getByRole('link', { name: 'Media Access Manager', exact: true }))
+      .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
     await expect(page.getByRole('link', { name: 'Ask on GitHub' }))
       .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
-    await expect(page.getByRole('link', { name: 'Example Provider' }))
-      .toHaveAttribute('href', 'https://provider.example');
   });
 });
