@@ -10,7 +10,7 @@ This document provides guidelines for AI agents and developers working on this p
 ## Package Manager & Node Version
 
 - **Use pnpm** for all package management (install, add, run, etc.)
-- **Use Node.js 24** – run `nvm use 24` before working on the project
+- **Use Node.js 26** – run `nvm use 26` before working on the project
 - **pnpm workspace** – when in a workspace, use `-w` for root-level dependencies; respect `pnpm-workspace.yaml` (trustPolicy, strictPeerDependencies, etc.)
 
 ## Dependencies

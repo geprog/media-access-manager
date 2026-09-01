@@ -1,4 +1,4 @@
-FROM node:24.9.0-alpine
+FROM node:26.8.1-alpine
 
 WORKDIR /app
 EXPOSE 3000
@@ -15,4 +15,5 @@ CMD ["node", \
     "--allow-fs-read=/app", \
     "--allow-fs-write=/app/data", \
     "--allow-addons", \
+    "--allow-net", \
     "./server/index.mjs"]
