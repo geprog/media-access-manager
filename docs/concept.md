@@ -352,6 +352,14 @@ ENCRYPTION_KEY=...           # For Vimeo passwords
 # Support contact offered on an expired access link (optional)
 NUXT_PUBLIC_SUPPORT_EMAIL=support@acme.example
 
+# Publisher of the media, linked in header and footer
+NUXT_PUBLIC_PUBLISHER_NAME=Acme GmbH
+NUXT_PUBLIC_PUBLISHER_URL=https://acme.example
+
+# Footer credit, defaults to the upstream project
+NUXT_PUBLIC_POWERED_BY_NAME=Acme Studio
+NUXT_PUBLIC_POWERED_BY_URL=https://studio.example
+
 # White-label (see theming.md for the full list)
 NUXT_PUBLIC_THEME_TITLE=Acme Media
 NUXT_PUBLIC_THEME_LOGO=/logo.svg

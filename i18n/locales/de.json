@@ -7,6 +7,7 @@
   "login_submit": "Anmelden",
   "login_error": "Ungültiges Passwort",
   "logout": "Abmelden",
+  "header_visit_publisher": "{name} besuchen",
   "admin_ui_hint": "Media Access Manager Verwaltung",
   "media_list_title": "Medien",
   "back_to_media_list": "Zurück zur Medienliste",
@@ -138,6 +139,8 @@
   "public_group_empty": "Hinter diesem Link gibt es derzeit nichts zu sehen. Bitte kontaktieren Sie den Support.",
   "media_groups": "Teil von Gruppen",
   "public_group_unavailable": "Nicht verfügbar",
+  "footer_publisher": "Herausgegeben von",
+  "footer_powered_by": "Unterstützt von",
   "footer_contrib_question": "Fragen, Wünsche oder etwas funktioniert nicht?",
   "footer_contrib_link": "Auf GitHub nachfragen"
 }

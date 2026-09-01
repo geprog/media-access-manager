@@ -30,6 +30,30 @@ them as `/logo.svg`, or point at an absolute URL on the customer's CDN.
 > setting is silently ignored. Write `="#0f4c81"` instead. Shell exports and
 > Docker/Kubernetes environment blocks are unaffected.
 
+## Publisher and credit
+
+Two more pairs of settings name the people behind a deployment. They are not
+`NUXT_PUBLIC_THEME_*` variables, because they are not part of the look.
+
+The **publisher** is whoever is responsible for the media handed out here – the
+company whose links and QR codes visitors receive, not a media provider like
+Vimeo. A URL publishes it twice: as a globe icon next to the brand in the
+header, and in the footer.
+
+The **credit** names whoever built the deployment. Together the footer reads
+_Published by Acme GmbH · Powered by Media Access Manager_.
+
+| Variable                      | Example                  | Effect                                       |
+| ----------------------------- | ------------------------ | -------------------------------------------- |
+| `NUXT_PUBLIC_PUBLISHER_URL`   | `https://acme.example`   | Publisher link, in the header and the footer |
+| `NUXT_PUBLIC_PUBLISHER_NAME`  | `Acme GmbH`              | Label of those links, defaults to the title  |
+| `NUXT_PUBLIC_POWERED_BY_NAME` | `Acme Studio`            | Who is credited. Empty drops the credit      |
+| `NUXT_PUBLIC_POWERED_BY_URL`  | `https://studio.example` | Where the credit links. Empty leaves it text |
+
+The credit defaults to the upstream project, so an untouched deployment reads
+_Powered by Media Access Manager_. An agency running the app for a customer
+usually points it at itself.
+
 ## Colors
 
 Every color accepts two kinds of value:
@@ -94,6 +118,7 @@ any layer no matter in which order the stylesheets load.
 NUXT_PUBLIC_THEME_TITLE=Acme Media
 NUXT_PUBLIC_THEME_LOGO=/acme-logo.svg
 NUXT_PUBLIC_THEME_FAVICON=/acme-favicon.svg
+NUXT_PUBLIC_PUBLISHER_URL=https://acme.example
 NUXT_PUBLIC_THEME_COLORS_PRIMARY="#0f4c81"
 NUXT_PUBLIC_THEME_COLORS_NEUTRAL=slate
 NUXT_PUBLIC_THEME_RADIUS=0.5rem
