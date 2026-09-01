@@ -11,13 +11,11 @@ trustPolicy: no-downgrade
 
 trustPolicyIgnoreAfter: 267840
 
-ignoredBuiltDependencies:
-  - better-sqlite3
-  - core-js
-  - unrs-resolver
-
-onlyBuiltDependencies:
-  - '@parcel/watcher'
-  - bcrypt
-  - esbuild
-  - vue-demi
+allowBuilds:
+  '@parcel/watcher': true
+  bcrypt: true
+  better-sqlite3: false
+  core-js: false
+  esbuild: true
+  unrs-resolver: false
+  vue-demi: true

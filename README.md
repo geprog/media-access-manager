@@ -74,12 +74,12 @@ For the full picture of the data model and the flows, read
 and Tailwind CSS, [Drizzle ORM](https://orm.drizzle.team) on SQLite
 (`better-sqlite3`), [nuxt-auth-utils](https://github.com/atinux/nuxt-auth-utils)
 for the admin session, `@nuxtjs/i18n` for translations, Vitest for unit tests and
-Playwright for end-to-end tests. Package manager is **pnpm**, Node **24+**.
+Playwright for end-to-end tests. Package manager is **pnpm**, Node **26+**.
 
 ## Getting started
 
 ```bash
-nvm use 24
+nvm use 26
 pnpm install
 cp .env.example .env   # then edit it, see Configuration
 pnpm dev
