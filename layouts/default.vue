@@ -50,7 +50,6 @@
       <slot />
     </main>
     <footer
-      v-if="loggedIn || provider.url"
       class="text-muted flex flex-col items-center gap-1 border-t px-4 py-3 text-sm dark:border-t-gray-800"
     >
       <!-- Names whoever runs this deployment, to visitors as well: the branded
@@ -68,7 +67,7 @@
       </div>
       <!-- Points admins at the upstream project. Visitors on a token page have
            no session, so the white-label surface stays free of our branding. -->
-      <div v-if="loggedIn" class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+      <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
         <span>{{ t('footer_contrib_question') }}</span>
         <ULink
           :to="repositoryUrl"
