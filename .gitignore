@@ -17,6 +17,10 @@ logs
 # Database
 data/
 
+# Locally mounted white-label logo and favicon. Anchored, because
+# `server/routes/branding` is source.
+/branding/
+
 # Misc
 .pnpm-store
 .DS_Store
