@@ -4,9 +4,12 @@ test.describe('Admin Auth', () => {
   test('redirects to login when not authenticated', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/login/);
-    // The login page opts out of the layout entirely, so it carries neither the
-    // publisher link nor the credit.
-    await expect(page.locator('footer')).toBeHidden();
+    // Everything an admin needs before signing in: the deployment's brand, the
+    // hint which app this is, and the way to reach the project.
+    await expect(page.getByText('Media Access Manager', { exact: true })).toBeVisible();
+    await expect(page.getByText('Media Access Manager Admin', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ask on GitHub' }))
+      .toHaveAttribute('href', 'https://github.com/geprog/media-access-manager');
   });
 
   test('shows error on invalid password', async ({ page }) => {
