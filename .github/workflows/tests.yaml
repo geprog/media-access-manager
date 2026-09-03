@@ -85,10 +85,20 @@ jobs:
       - name: Install Playwright browsers and system dependencies
         run: pnpm playwright:install
 
+      # The suite runs against the image rather than against a server started
+      # in this job, so it exercises what a deployment actually runs: the same
+      # base image, the same native modules, the same fonts. `publish.yaml`
+      # builds the image the same way.
+      - name: Build the app
+        run: pnpm run build
+
+      - name: Build the Docker image
+        run: docker build --tag media-access-manager:e2e .
+
       - name: Run Playwright tests
         run: pnpm test:e2e
         env:
-          NUXT_ADMIN_PASSWORD: test
+          E2E_DOCKER_IMAGE: media-access-manager:e2e
 
       - name: Upload Playwright Test Report
         if: always()
