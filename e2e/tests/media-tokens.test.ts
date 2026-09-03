@@ -489,4 +489,49 @@ test.describe('Media and Tokens', () => {
     await expect(page.getByText(/Visitors with a valid token can watch/i)).toBeVisible();
     await expect(page.getByText(/Plays only on these domains/i)).toHaveCount(0);
   });
+  /**
+   * The ZIP is the only export that reaches `sharp`: both PDF layouts write the
+   * token with a font pdf-lib embeds itself, while a ZIP with `showToken`
+   * composites the label onto the PNG. A build whose native `sharp` binary does
+   * not match the runtime — a glibc one on musl, say — fails here and nowhere
+   * else, so the archive is downloaded rather than merely requested.
+   */
+  test('exports a batch as QR images carrying the token', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+    const mediaId = page.url().split('/media/')[1];
+    expect(mediaId).toBeTruthy();
+
+    // Downloaded from inside the page for the same cookie reason as
+    // `deleteTestData`, and read to the last byte: the handler builds the whole
+    // archive before it answers, so a `sharp` that will not load arrives as a
+    // 500 rather than as a truncated stream.
+    const archive = await page.evaluate(async ([id, name]) => {
+      const batches: Array<{ id: string, name: string }> = await fetch(`/api/batches?mediaId=${id}`)
+        .then(response => response.json());
+      const batchId = batches.find(batch => batch.name === name)?.id;
+      const response = await fetch(`/api/batches/${batchId}/qr-zip?sizeCm=5&showToken=true`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return {
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        signature: String.fromCharCode(bytes[0] ?? 0, bytes[1] ?? 0),
+        length: bytes.length,
+      };
+    }, [mediaId, batchName]);
+
+    expect(archive.status).toBe(200);
+    expect(archive.contentType).toBe('application/zip');
+    // A zip local file header, so the body is an archive and not an error page.
+    expect(archive.signature).toBe('PK');
+    // Two QR codes at 5 cm and 300 dpi. An empty archive is a few hundred bytes.
+    expect(archive.length).toBeGreaterThan(10_000);
+  });
 });
