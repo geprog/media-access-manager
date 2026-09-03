@@ -11,6 +11,13 @@ export default defineNuxtConfig({
     // so no built image can ever carry a password someone else knows.
     adminPassword: '',
     vimeoApiToken: '',
+    // Directory served at `/branding/*`, read at request time so a deployment
+    // can mount its logo and favicon into the running container. Relative to
+    // the working directory, which is `/app` in the image, so a volume at
+    // `/app/branding` needs no further configuration. `public/` cannot serve
+    // these files: it is frozen into a manifest at build time – see
+    // `server/routes/branding/[...path].get.ts` and `docs/theming.md`.
+    brandingDir: 'branding',
     public: {
       // Where a visitor whose access has ended asks for a new link. Empty
       // means no address is published, so the token page offers no mail link.
@@ -35,6 +42,11 @@ export default defineNuxtConfig({
       // set per deployment through `NUXT_PUBLIC_THEME_*`; see `docs/theming.md`.
       theme: {
         title: 'Media Access Manager',
+        // Empty until a deployment names a file, so nothing is branded that
+        // nobody asked for. `/branding/logo.svg` is the usual value: that
+        // directory is read at request time, which is what lets a logo be
+        // mounted into a running container. Only the files named here are
+        // served – see `server/routes/branding/[...path].get.ts`.
         logo: '',
         logoDark: '',
         logoHeight: '2rem',
