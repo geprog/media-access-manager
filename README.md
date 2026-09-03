@@ -96,16 +96,17 @@ applied automatically when the server first touches it – no manual setup step.
 All settings are environment variables (Nuxt `runtimeConfig`). Copy
 [.env.example](.env.example) as a starting point.
 
-| Variable                    | Required          | Description                                                                       |
-| --------------------------- | ----------------- | --------------------------------------------------------------------------------- |
-| `NUXT_ADMIN_PASSWORD`       | **in production** | The single password protecting the admin UI. `pnpm dev` falls back to `password`. |
-| `NUXT_SESSION_PASSWORD`     | **in production** | Secret sealing the admin session cookie, at least 32 characters.                  |
-| `NUXT_VIMEO_API_TOKEN`      | for Vimeo         | Vimeo API token used to list your videos and check their privacy settings.        |
-| `NUXT_PUBLIC_SUPPORT_EMAIL` | no                | Address offered to visitors whose access has ended. Empty means no mail link.     |
-| `NUXT_PUBLIC_THEME_*`       | no                | White-label theme, see [docs/theming.md](docs/theming.md).                        |
-| `NUXT_PUBLIC_PUBLISHER_*`   | no                | Name and URL of whoever publishes the media, linked in header and footer.         |
-| `NUXT_PUBLIC_POWERED_BY_*`  | no                | Name and URL credited in the footer, defaults to the upstream project.            |
-| `PORT`                      | no                | Port to listen on, defaults to `3000`.                                            |
+| Variable                    | Required          | Description                                                                                                                        |
+| --------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_ADMIN_PASSWORD`       | **in production** | The single password protecting the admin UI. `pnpm dev` falls back to `password`.                                                  |
+| `NUXT_SESSION_PASSWORD`     | **in production** | Secret sealing the admin session cookie, at least 32 characters.                                                                   |
+| `NUXT_VIMEO_API_TOKEN`      | for Vimeo         | Vimeo API token used to list your videos and check their privacy settings.                                                         |
+| `NUXT_PUBLIC_SUPPORT_EMAIL` | no                | Address offered to visitors whose access has ended. Empty means no mail link.                                                      |
+| `NUXT_PUBLIC_THEME_*`       | no                | White-label theme, see [docs/theming.md](docs/theming.md).                                                                         |
+| `NUXT_BRANDING_DIR`         | no                | Where the files named by `NUXT_PUBLIC_THEME_LOGO`/`_LOGO_DARK`/`_FAVICON` are read from, defaults to `branding` (`/app/branding`). |
+| `NUXT_PUBLIC_PUBLISHER_*`   | no                | Name and URL of whoever publishes the media, linked in header and footer.                                                          |
+| `NUXT_PUBLIC_POWERED_BY_*`  | no                | Name and URL credited in the footer, defaults to the upstream project.                                                             |
+| `PORT`                      | no                | Port to listen on, defaults to `3000`.                                                                                             |
 
 > [!IMPORTANT]
 > `NUXT_ADMIN_PASSWORD` and `NUXT_SESSION_PASSWORD` only have defaults in
@@ -139,14 +140,25 @@ Container images are published to the GitHub Container Registry on every push to
 docker run -d \
   -p 3000:3000 \
   -v mam-data:/app/data \
+  -v ./logo.svg:/app/branding/logo.svg \
   -e NUXT_ADMIN_PASSWORD=... \
   -e NUXT_SESSION_PASSWORD=... \
   -e NUXT_VIMEO_API_TOKEN=... \
+  -e NUXT_PUBLIC_THEME_LOGO=/branding/logo.svg \
   ghcr.io/geprog/media-access-manager:next
 ```
 
 `/app/data` holds the SQLite database and is the only writable path – mount a
 volume there or the data is gone with the container.
+
+`/app/branding` is empty and optional. It holds the logo and favicon of a
+white-label deployment, served at `/branding/*` and read on every request, which
+is what lets a published image be branded without a rebuild – mount the file and
+name it through `NUXT_PUBLIC_THEME_LOGO`/`_FAVICON`. Only the files those
+settings name are served; anything else in the directory answers `404`. Do
+**not** mount into `/app/public` instead: that directory is frozen into a
+manifest at build time, and a file added there later is answered with the app's
+HTML rather than the image. See [docs/theming.md](docs/theming.md).
 
 To build it yourself:
 

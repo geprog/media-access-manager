@@ -8,27 +8,80 @@ All settings are optional; anything left empty keeps the default.
 
 ## Settings
 
-| Variable                           | Example          | Effect                                                         |
-| ---------------------------------- | ---------------- | -------------------------------------------------------------- |
-| `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`     | Company name in the header and the browser tab                 |
-| `NUXT_PUBLIC_THEME_LOGO`           | `/logo.svg`      | Logo next to the name                                          |
-| `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/logo-dark.svg` | Logo variant used in dark mode                                 |
-| `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`         | Rendered logo height (default `2rem`), width follows the ratio |
-| `NUXT_PUBLIC_THEME_FAVICON`        | `/favicon.svg`   | Browser tab icon                                               |
-| `NUXT_PUBLIC_THEME_COLORS_PRIMARY` | `#0f4c81`        | Brand color: buttons, links, focus rings                       |
-| `NUXT_PUBLIC_THEME_COLORS_NEUTRAL` | `slate`          | Greys: text, surfaces, borders                                 |
-| `NUXT_PUBLIC_THEME_COLORS_ERROR`   | `#c0392b`        | Also `_SECONDARY`, `_SUCCESS`, `_INFO`, `_WARNING`             |
-| `NUXT_PUBLIC_THEME_RADIUS`         | `0.75rem`        | Roundness of buttons, inputs, cards, dialogs                   |
-| `NUXT_PUBLIC_THEME_SPACING`        | `0.3rem`         | Density: scales every padding, margin and gap                  |
-| `NUXT_PUBLIC_THEME_CONTAINER`      | `72rem`          | Maximum content width                                          |
-
-Logos and favicons are URLs. Either drop the files into `public/` and reference
-them as `/logo.svg`, or point at an absolute URL on the customer's CDN.
+| Variable                           | Example                   | Effect                                                         |
+| ---------------------------------- | ------------------------- | -------------------------------------------------------------- |
+| `NUXT_PUBLIC_THEME_TITLE`          | `Acme Media`              | Company name in the header and the browser tab                 |
+| `NUXT_PUBLIC_THEME_LOGO`           | `/branding/logo.svg`      | Logo next to the name                                          |
+| `NUXT_PUBLIC_THEME_LOGO_DARK`      | `/branding/logo-dark.svg` | Logo variant used in dark mode                                 |
+| `NUXT_PUBLIC_THEME_LOGO_HEIGHT`    | `2.5rem`                  | Rendered logo height (default `2rem`), width follows the ratio |
+| `NUXT_PUBLIC_THEME_FAVICON`        | `/branding/favicon.ico`   | Browser tab icon                                               |
+| `NUXT_PUBLIC_THEME_COLORS_PRIMARY` | `#0f4c81`                 | Brand color: buttons, links, focus rings                       |
+| `NUXT_PUBLIC_THEME_COLORS_NEUTRAL` | `slate`                   | Greys: text, surfaces, borders                                 |
+| `NUXT_PUBLIC_THEME_COLORS_ERROR`   | `#c0392b`                 | Also `_SECONDARY`, `_SUCCESS`, `_INFO`, `_WARNING`             |
+| `NUXT_PUBLIC_THEME_RADIUS`         | `0.75rem`                 | Roundness of buttons, inputs, cards, dialogs                   |
+| `NUXT_PUBLIC_THEME_SPACING`        | `0.3rem`                  | Density: scales every padding, margin and gap                  |
+| `NUXT_PUBLIC_THEME_CONTAINER`      | `72rem`                   | Maximum content width                                          |
 
 > **Quote hex colors in `.env` files.** An unquoted `#` starts a comment there, so
 > `NUXT_PUBLIC_THEME_COLORS_PRIMARY=#0f4c81` arrives as an empty value and the
 > setting is silently ignored. Write `="#0f4c81"` instead. Shell exports and
 > Docker/Kubernetes environment blocks are unaffected.
+
+## Logos and favicons
+
+`LOGO`, `LOGO_DARK` and `FAVICON` are URLs, and all three are empty by default:
+an untouched deployment shows its title as text and the browser's own tab icon.
+Nothing is branded until a deployment says so.
+
+The branding directory is what makes branding a _published image_ possible. It
+is read on every request, so a file mounted into a running container is served
+straight away – no rebuild. Name the file and mount it:
+
+```bash
+docker run \
+  -v ./acme-logo.svg:/app/branding/logo.svg \
+  -e NUXT_PUBLIC_THEME_LOGO=/branding/logo.svg \
+  ...
+```
+
+The name is yours to pick; only the setting and the mount have to agree:
+
+```env
+NUXT_PUBLIC_THEME_LOGO=/branding/acme.png
+```
+
+A value with an origin of its own (`https://cdn.acme.example/logo.svg`) is left
+to that host and never touches this route, which stays the right choice when the
+customer already publishes their assets. A path outside `/branding/` – say
+`/logo.svg` – is served from `public/` and therefore has to be part of a build.
+
+Only the files those three settings name are served. Another image in the
+directory answers `404` even if it is a perfectly good logo, so a mount may
+carry a whole asset folder without exposing any of it. The name has to match
+the setting exactly – case, extension and escaping included – and the extension
+must be one of `.svg`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.avif`, `.gif` or
+`.ico`, since that is what the served `Content-Type` is derived from.
+
+A setting naming a file nobody mounted answers `404`, which shows up as a broken
+image in the header – so if a logo does not appear, check that the mounted path
+and the setting spell the same name.
+
+Setting `LOGO_DARK` alongside `LOGO` swaps the logo per color mode. Both images
+render at once with one hidden by CSS, so mount both files; a dark variant on its
+own is ignored.
+
+> **Do not mount files into `/app/public`.** The build freezes a manifest of
+> everything in `public/` into the server bundle, and only what that manifest
+> lists is served. A file that appears there afterwards is answered with the
+> app's HTML instead of the image – it looks like a frontend route – and a file
+> mounted _over_ one that was built in is sent with the original's
+> `Content-Length` and `ETag`, so it arrives truncated or stale. `/branding`
+> exists to avoid both.
+
+`NUXT_BRANDING_DIR` moves the directory; the default `branding` is relative to
+the working directory, which is `/app` in the image. Keep it under `/app`: the
+container runs Node with `--allow-fs-read=/app`, so nothing outside is readable.
+An empty value switches the route off entirely.
 
 ## Publisher and credit
 
@@ -116,10 +169,17 @@ any layer no matter in which order the stylesheets load.
 
 ```env
 NUXT_PUBLIC_THEME_TITLE=Acme Media
-NUXT_PUBLIC_THEME_LOGO=/acme-logo.svg
-NUXT_PUBLIC_THEME_FAVICON=/acme-favicon.svg
+NUXT_PUBLIC_THEME_LOGO=/branding/acme-logo.svg
+NUXT_PUBLIC_THEME_FAVICON=/branding/acme-favicon.ico
 NUXT_PUBLIC_PUBLISHER_URL=https://acme.example
 NUXT_PUBLIC_THEME_COLORS_PRIMARY="#0f4c81"
 NUXT_PUBLIC_THEME_COLORS_NEUTRAL=slate
 NUXT_PUBLIC_THEME_RADIUS=0.5rem
+```
+
+Both files are mounted into the branding directory alongside it:
+
+```bash
+-v ./acme-logo.svg:/app/branding/acme-logo.svg
+-v ./acme-favicon.ico:/app/branding/acme-favicon.ico
 ```

@@ -12,6 +12,11 @@ EXPOSE 3000
 COPY .output ./
 COPY server/db/migrations /app/server/db/migrations
 RUN mkdir -p /app/data && chown node:node /app/data
+# Mount point for a white-label logo and favicon, served at `/branding/*` and
+# read at request time – which is what lets a deployment brand a published
+# image without rebuilding it. Empty on purpose: nothing is branded until a
+# deployment mounts a file and names it.
+RUN mkdir -p /app/branding
 
 USER node
 
