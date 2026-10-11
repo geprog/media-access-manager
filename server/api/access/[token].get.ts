@@ -1,6 +1,10 @@
+import type { Token } from '../../db/schema';
+import type { PurchaseOption } from '../../utils/purchase';
 import { getMediaById } from '../../services/mediaService';
+import { getPurchaseOptionsForToken } from '../../services/paymentService';
 import {
   denialFor,
+  findTokenByValue,
   getAccessDenial,
   getGroupTokenAccess,
   getGroupWindowReason,
@@ -17,6 +21,10 @@ export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
   const user = session?.user as { role?: string } | undefined;
   const isAdmin = user?.role === 'admin';
+  // Admins checking their own links are sent to the media or group instead of
+  // a checkout, so they are offered nothing to buy.
+  const purchaseOptionsFor = (tokenRow: Token | null) =>
+    tokenRow && !isAdmin ? getPurchaseOptionsForToken(tokenRow) : Promise.resolve([]);
 
   // A group token unlocks several media, so this page only lists them. Nothing
   // is spent until the visitor picks one — see `[token]/[mediaId].get.ts`.
@@ -37,6 +45,7 @@ export default defineEventHandler(async (event) => {
         // Admins check their own links here, so they get the way back into the
         // group instead of a support mail.
         groupId: isAdmin ? denial.groupId : null,
+        purchaseOptions: await purchaseOptionsFor(tokenRow),
       });
     }
     return {
@@ -55,6 +64,9 @@ export default defineEventHandler(async (event) => {
         usageLimit: entry.usageLimit,
         usageCount: entry.usageCount,
       })),
+      // Some media used up while the window is still open: buying again is
+      // offered beside the list, the same way as on an expired link.
+      purchaseOptions: await purchaseOptionsFor(tokenRow),
     };
   }
 
@@ -64,6 +76,7 @@ export default defineEventHandler(async (event) => {
   if (!tokenRow?.mediaId) {
     const denial = await getAccessDenial(token);
     const deniedMedia = denial.mediaId ? await getMediaById(denial.mediaId) : null;
+    const expiredToken = denial.reason === 'token_expired' ? await findTokenByValue(token) : null;
     throw denied({
       reason: denial.reason,
       title: deniedMedia?.title ?? null,
@@ -71,6 +84,7 @@ export default defineEventHandler(async (event) => {
       // instead of a support mail. Visitors have no use for it.
       mediaId: isAdmin ? denial.mediaId : null,
       groupId: null,
+      purchaseOptions: await purchaseOptionsFor(expiredToken),
     });
   }
   const viewable = await requireViewableMedia(tokenRow.mediaId);
@@ -93,6 +107,8 @@ interface DenialData {
   title: string | null
   mediaId: string | null
   groupId: string | null
+  /** What the visitor may buy to get access again; empty when nothing is for sale. */
+  purchaseOptions: PurchaseOption[]
 }
 
 function denied(data: DenialData) {

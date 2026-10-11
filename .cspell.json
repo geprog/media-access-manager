@@ -52,6 +52,14 @@
       ],
       "language": "de,en",
       "words": []
+    },
+    {
+      "filename": [
+        "server/utils/purchase.ts",
+        "server/utils/purchase.test.ts"
+      ],
+      "language": "de,en",
+      "words": []
     }
   ]
 }

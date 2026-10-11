@@ -1,3 +1,4 @@
+import { getPurchaseOptionsForToken } from '../../../services/paymentService';
 import { consumeGroupMediaView, denialFor, resolveGroupMedia } from '../../../services/tokenService';
 import { requireViewableMedia } from '../../../utils/publicAccess';
 
@@ -23,7 +24,7 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 404,
       statusMessage: 'Not Found',
-      data: { reason: 'invalid_token', title: null, mediaId: null, groupId: null },
+      data: { reason: 'invalid_token', title: null, mediaId: null, groupId: null, purchaseOptions: [] },
     });
   }
   if (resolved.blockedBy) {
@@ -38,6 +39,8 @@ export default defineEventHandler(async (event) => {
         // there rather than to the one media they happened to click.
         mediaId: null,
         groupId: isAdmin ? denial.groupId : null,
+        // Renewing buys the whole group again, not just this media.
+        purchaseOptions: isAdmin ? [] : await getPurchaseOptionsForToken(resolved.token),
       },
     });
   }

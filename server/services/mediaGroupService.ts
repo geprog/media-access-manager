@@ -1,6 +1,6 @@
 import type { Media, MediaGroup } from '../db/schema';
 import { asc, eq, inArray } from 'drizzle-orm';
-import { batches, media, mediaGroupItems, mediaGroups, tokenMediaUsage, tokens } from '../db/schema';
+import { batches, media, mediaGroupItems, mediaGroups, tokenMediaUsage, tokenPurchases, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 
 export interface MediaGroupSummary extends MediaGroup {
@@ -82,7 +82,7 @@ export async function createMediaGroup(name: string, mediaIds: string[]): Promis
       tx.insert(mediaGroupItems).values({ groupId: id, mediaId, position }).run();
     });
   });
-  return { id, name, createdAt };
+  return { id, name, priceMonth: null, priceYear: null, createdAt };
 }
 
 /**
@@ -96,7 +96,7 @@ export async function createMediaGroup(name: string, mediaIds: string[]): Promis
  */
 export async function updateMediaGroup(
   id: string,
-  data: { name?: string, mediaIds?: string[] },
+  data: { name?: string, mediaIds?: string[], priceMonth?: number | null, priceYear?: number | null },
 ): Promise<MediaGroup | null> {
   const existing = await getMediaGroupById(id);
   if (!existing) {
@@ -104,11 +104,14 @@ export async function updateMediaGroup(
   }
   const members = data.mediaIds ? await resolveMediaIds(data.mediaIds) : null;
   const db = useDb();
-  const name = data.name ?? existing.name;
+  // `undefined` leaves a field as it is; a `null` price takes it off sale.
+  const changes = {
+    name: data.name ?? existing.name,
+    priceMonth: data.priceMonth === undefined ? existing.priceMonth : data.priceMonth,
+    priceYear: data.priceYear === undefined ? existing.priceYear : data.priceYear,
+  };
   db.transaction((tx) => {
-    if (data.name !== undefined) {
-      tx.update(mediaGroups).set({ name }).where(eq(mediaGroups.id, id)).run();
-    }
+    tx.update(mediaGroups).set(changes).where(eq(mediaGroups.id, id)).run();
     if (members) {
       tx.delete(mediaGroupItems).where(eq(mediaGroupItems.groupId, id)).run();
       members.forEach((mediaId, position) => {
@@ -116,7 +119,7 @@ export async function updateMediaGroup(
       });
     }
   });
-  return { ...existing, name };
+  return { ...existing, ...changes };
 }
 
 export interface MediaGroupDeletion {
@@ -141,6 +144,7 @@ export async function deleteMediaGroup(id: string): Promise<MediaGroupDeletion |
   return db.transaction((tx) => {
     if (groupTokenIds.length > 0) {
       tx.delete(tokenMediaUsage).where(inArray(tokenMediaUsage.tokenId, groupTokenIds)).run();
+      tx.delete(tokenPurchases).where(inArray(tokenPurchases.tokenId, groupTokenIds)).run();
     }
     const deletedTokens = tx.delete(tokens).where(eq(tokens.groupId, id)).run().changes;
     const deletedBatches = tx.delete(batches).where(eq(batches.groupId, id)).run().changes;
