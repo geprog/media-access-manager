@@ -328,9 +328,9 @@ test.describe('Media and Tokens', () => {
     const token = await createTokenViaUI(page, batchName, 1);
     expect(token).toBeTruthy();
 
-    // An hour past the three days so the page cannot round down to two while
-    // the browser is still navigating.
-    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000);
+    // Half an hour past the five hours so the page cannot round down to four
+    // while the browser is still navigating.
+    const expiresAt = new Date(Date.now() + (3 * 24 * 60 + 5 * 60 + 30) * 60 * 1000);
     await mockAccess(page, {
       title,
       embed: videoEmbed('E2E Countdown Video'),
@@ -340,7 +340,8 @@ test.describe('Media and Tokens', () => {
     await page.goto(`/${token}`);
 
     await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('3 days left')).toBeVisible();
+    // The largest unit alone would hide most of a day, so the next one is named too.
+    await expect(page.getByText('3 days, 5 hours left')).toBeVisible();
     await expect(page.getByText('can be opened 3 more times')).toBeVisible();
   });
 

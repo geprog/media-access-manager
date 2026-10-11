@@ -1,12 +1,12 @@
 /**
- * How much of a token's access window is left, expressed the way
- * `Intl.RelativeTimeFormat` wants it. The platform already knows how to word
- * "in 3 days" in every locale the app ships, so only picking the unit is ours.
+ * How much of a token's access window is left, in the shape
+ * `Intl.DurationFormat` takes. The platform already knows how to word
+ * "1 hour, 59 minutes" in every locale the app ships, so only picking the
+ * units is ours. Units with nothing left in them are left out.
  */
-export interface RemainingTime {
-  value: number
-  unit: Intl.RelativeTimeFormatUnit
-}
+export type RemainingTime = Partial<Record<RemainingTimeUnit, number>>;
+
+type RemainingTimeUnit = 'years' | 'months' | 'days' | 'hours' | 'minutes' | 'seconds';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -17,32 +17,42 @@ const WEEK = 7 * DAY;
 const MONTH = 30 * DAY;
 const YEAR = 365 * DAY;
 
+/** Largest first; each unit is followed by the one shown beside it. */
+const UNITS: Array<[RemainingTimeUnit, number]> = [
+  ['years', YEAR],
+  ['months', MONTH],
+  ['days', DAY],
+  ['hours', HOUR],
+  ['minutes', MINUTE],
+  ['seconds', SECOND],
+];
+
 /**
- * The largest whole unit still left before `expiresAt`, or `null` once the
- * window has closed. Always rounds down, so the visitor is never promised time
- * they do not have.
+ * The largest whole unit still left before `expiresAt` together with the next
+ * smaller one ("1 hour, 59 minutes", "2 months, 5 days"), or `null` once the
+ * window has closed. Below an hour minutes stand alone: the page only
+ * refreshes every half minute, so a seconds count would always be stale.
+ * Always rounds down, so the visitor is never promised time they do not have.
  */
 export function getRemainingTime(expiresAt: Date, now: Date = new Date()): RemainingTime | null {
   const remaining = expiresAt.getTime() - now.getTime();
   if (remaining <= 0) {
     return null;
   }
-  if (remaining < MINUTE) {
-    return { value: Math.floor(remaining / SECOND), unit: 'second' };
+  // Under a second is still time left, counted as zero seconds.
+  const found = UNITS.findIndex(([, size]) => remaining >= size);
+  const index = found === -1 ? UNITS.length - 1 : found;
+  const [unit, size] = UNITS[index]!;
+  const result: RemainingTime = { [unit]: Math.floor(remaining / size) };
+  const next = UNITS[index + 1];
+  if (next && unit !== 'minutes' && unit !== 'seconds') {
+    const [nextUnit, nextSize] = next;
+    const rest = Math.floor((remaining % size) / nextSize);
+    if (rest > 0) {
+      result[nextUnit] = rest;
+    }
   }
-  if (remaining < HOUR) {
-    return { value: Math.floor(remaining / MINUTE), unit: 'minute' };
-  }
-  if (remaining < DAY) {
-    return { value: Math.floor(remaining / HOUR), unit: 'hour' };
-  }
-  if (remaining < MONTH) {
-    return { value: Math.floor(remaining / DAY), unit: 'day' };
-  }
-  if (remaining < YEAR) {
-    return { value: Math.floor(remaining / MONTH), unit: 'month' };
-  }
-  return { value: Math.floor(remaining / YEAR), unit: 'year' };
+  return result;
 }
 
 /**

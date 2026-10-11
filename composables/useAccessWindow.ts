@@ -66,11 +66,7 @@ export function useExpiryLabel(
     }
     return t('public_access_expires', {
       date: expiry.toLocaleString(locale.value, { dateStyle: 'long', timeStyle: 'short' }),
-      duration: new Intl.NumberFormat(locale.value, {
-        style: 'unit',
-        unit: remaining.unit,
-        unitDisplay: 'long',
-      }).format(remaining.value),
+      duration: new Intl.DurationFormat(locale.value, { style: 'long' }).format(remaining),
     });
   });
 }
