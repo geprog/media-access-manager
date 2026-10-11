@@ -1,11 +1,13 @@
 import type { Media, MediaGroup, Token } from '../db/schema';
 import type { GroupMediaAccess } from '../utils/groupAccess';
+import type { PurchasePeriod } from '../utils/purchase';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
 import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { batches, tokenMediaUsage, tokens } from '../db/schema';
+import { batches, tokenMediaUsage, tokenPurchases, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { extendExpiry } from '../utils/purchase';
 import { getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
 
@@ -296,4 +298,78 @@ export async function listBatchesByMediaId(mediaId: string) {
 export async function listBatchesByGroupId(groupId: string) {
   const db = useDb();
   return db.select().from(batches).where(eq(batches.groupId, groupId));
+}
+
+/**
+ * Whether the visitor holding this token may buy access again: the token ran
+ * out by date or by views, or — for a group — some of its media are used up
+ * while the window is still open. A link that has not started yet was never
+ * handed over, so there is nothing to renew.
+ */
+export async function isTokenRenewable(tokenRow: Token): Promise<boolean> {
+  if (!tokenRow.groupId) {
+    const reason = getTokenInvalidReason(tokenRow);
+    return reason === 'expired' || reason === 'usage_limit_reached';
+  }
+  const windowReason = getGroupWindowReason(tokenRow);
+  if (windowReason) {
+    return windowReason === 'expired';
+  }
+  const access = await getGroupTokenAccess(tokenRow.token);
+  return !!access?.media.some(entry => entry.blockedBy === 'usage_limit_reached');
+}
+
+export type PurchaseApplication = 'applied' | 'already_applied' | 'token_missing';
+
+/**
+ * Extends a token by a paid period, at most once per payment. What was bought
+ * is time, so the view limit goes: a paid month that closed after three views
+ * would be a broken promise. Per-media counts of a group token stay, since
+ * those views did happen — they just no longer limit anything.
+ *
+ * Runs as one synchronous transaction, so a retried webhook racing the return
+ * page finds the other's row and leaves the token alone.
+ */
+export function applyTokenPurchase(data: {
+  tokenId: string
+  paymentId: string
+  period: PurchasePeriod
+  now?: Date
+}): PurchaseApplication {
+  const db = useDb();
+  const now = data.now ?? new Date();
+  return db.transaction((tx) => {
+    const existing = tx
+      .select({ paymentId: tokenPurchases.paymentId })
+      .from(tokenPurchases)
+      .where(eq(tokenPurchases.paymentId, data.paymentId))
+      .all()[0];
+    if (existing) {
+      return 'already_applied';
+    }
+    const tokenRow = tx.select().from(tokens).where(eq(tokens.id, data.tokenId)).all()[0];
+    if (!tokenRow) {
+      return 'token_missing';
+    }
+    const expiresAfter = extendExpiry(tokenRow.expiresAt, data.period, now);
+    tx.insert(tokenPurchases).values({
+      paymentId: data.paymentId,
+      tokenId: tokenRow.id,
+      period: data.period,
+      expiresBefore: tokenRow.expiresAt,
+      expiresAfter,
+      createdAt: now,
+    }).run();
+    tx.update(tokens)
+      .set({ expiresAt: expiresAfter, usageLimit: null })
+      .where(eq(tokens.id, tokenRow.id))
+      .run();
+    return 'applied';
+  });
+}
+
+export async function findTokenById(tokenId: string) {
+  const db = useDb();
+  const rows = await db.select().from(tokens).where(eq(tokens.id, tokenId));
+  return rows[0] ?? null;
 }

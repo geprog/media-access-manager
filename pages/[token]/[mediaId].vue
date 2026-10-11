@@ -8,6 +8,7 @@
       :title="denial?.title"
       :media-id="denial?.mediaId"
       :group-id="denial?.groupId"
+      :purchase-options="denial?.purchaseOptions"
     >
       <template #actions>
         <UButton variant="link" :to="groupLink" :label="$t('public_group_back')" />
@@ -34,6 +35,8 @@
 </template>
 
 <script setup lang="ts">
+import type { PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
+
 definePageMeta({
   public: true,
 });
@@ -58,7 +61,13 @@ const groupLink = computed(() => `/${encodeURIComponent(token.value)}`);
 
 const denial = computed(() => {
   const body = error.value?.data as {
-    data?: { reason?: string, title?: string | null, mediaId?: string | null, groupId?: string | null }
+    data?: {
+      reason?: string
+      title?: string | null
+      mediaId?: string | null
+      groupId?: string | null
+      purchaseOptions?: PurchaseOption[]
+    }
   } | undefined;
   return body?.data;
 });

@@ -1,7 +1,7 @@
 import type { MediaInsert } from '../db/schema';
 import type { AccessibilityContext, AccessibilityReport, MediaProvider, OEmbedResponse } from './providers/types';
-import { eq } from 'drizzle-orm';
-import { batches, media, mediaGroupItems, tokenMediaUsage, tokens } from '../db/schema';
+import { eq, inArray } from 'drizzle-orm';
+import { batches, media, mediaGroupItems, tokenMediaUsage, tokenPurchases, tokens } from '../db/schema';
 import { useDb } from '../utils/db';
 import { filterAvailableMediaItems } from '../utils/mediaAvailability';
 import { createVimeoProvider } from './providers/vimeo';
@@ -39,6 +39,24 @@ export async function createMedia(data: MediaInsert) {
   return data;
 }
 
+/** Sets what buying access to the media again costs; `undefined` leaves a price as it is. */
+export async function updateMediaPrices(
+  id: string,
+  prices: { priceMonth?: number | null, priceYear?: number | null },
+) {
+  const existing = await getMediaById(id);
+  if (!existing) {
+    return null;
+  }
+  const db = useDb();
+  const changes = {
+    priceMonth: prices.priceMonth === undefined ? existing.priceMonth : prices.priceMonth,
+    priceYear: prices.priceYear === undefined ? existing.priceYear : prices.priceYear,
+  };
+  await db.update(media).set(changes).where(eq(media.id, id));
+  return { ...existing, ...changes };
+}
+
 export interface MediaDeletion {
   deletedTokens: number
   deletedBatches: number
@@ -63,6 +81,9 @@ export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
   const db = useDb();
   const deleted = db.transaction((tx) => {
     tx.delete(tokenMediaUsage).where(eq(tokenMediaUsage.mediaId, id)).run();
+    tx.delete(tokenPurchases)
+      .where(inArray(tokenPurchases.tokenId, tx.select({ id: tokens.id }).from(tokens).where(eq(tokens.mediaId, id))))
+      .run();
     const removedFromGroups = tx.delete(mediaGroupItems).where(eq(mediaGroupItems.mediaId, id)).run().changes;
     const deletedTokens = tx.delete(tokens).where(eq(tokens.mediaId, id)).run().changes;
     const deletedBatches = tx.delete(batches).where(eq(batches.mediaId, id)).run().changes;

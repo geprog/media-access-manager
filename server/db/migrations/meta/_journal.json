@@ -15,6 +15,13 @@
       "when": 1788132962378,
       "tag": "0001_damp_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790247922400,
+      "tag": "0002_nappy_slapstick",
+      "breakpoints": true
     }
   ]
 }

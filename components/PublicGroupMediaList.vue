@@ -62,10 +62,19 @@
         {{ $t('public_request_access') }}
       </ULink>
     </p>
+    <!-- Buying again lifts the view limit for the whole group, so it belongs
+         to the list rather than to one used-up card. -->
+    <PublicPurchaseOptions
+      v-if="hasBlockedMedia && purchaseOptions?.length"
+      class="mt-6"
+      :token="token"
+      :options="purchaseOptions"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { PurchaseOption } from './PublicPurchaseOptions.vue';
 import { getRemainingViews } from '~/utils/accessWindow';
 import { buildMailtoLink } from '~/utils/mailto';
 
@@ -84,6 +93,8 @@ const props = defineProps<{
   title: string
   expiresAt?: string | null
   media: GroupMediaEntry[]
+  /** Offered once some media are used up; empty when nothing is for sale. */
+  purchaseOptions?: PurchaseOption[]
 }>();
 
 const { t } = useI18n();

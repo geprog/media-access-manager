@@ -11,10 +11,21 @@ export interface VimeoConfig extends ProviderConfig<'vimeo'> {
   videoId: string
 }
 
+/**
+ * What buying access again costs, in the currency's minor unit (cents), for
+ * media and groups alike. `null` means that period is not for sale. Only an
+ * expired token's own target is priced — a group is never the sum of its media.
+ */
+const purchasePrices = {
+  priceMonth: integer('price_month'),
+  priceYear: integer('price_year'),
+};
+
 export const media = sqliteTable('media', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   providerConfig: text('provider_config', { mode: 'json' }).$type<VimeoConfig>().notNull(),
+  ...purchasePrices,
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -26,6 +37,7 @@ export const media = sqliteTable('media', {
 export const mediaGroups = sqliteTable('media_groups', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  ...purchasePrices,
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -83,6 +95,21 @@ export const tokenMediaUsage = sqliteTable('token_media_usage', {
   usageCount: integer('usage_count').notNull().default(0),
 }, table => [primaryKey({ columns: [table.tokenId, table.mediaId] })]);
 
+/**
+ * One row per *paid* Mollie payment that extended a token — and nothing about
+ * who paid or how much: that stays with Mollie. The payment id is kept because
+ * it is the only thing that stops a retried webhook from extending twice.
+ */
+export const tokenPurchases = sqliteTable('token_purchases', {
+  paymentId: text('payment_id').primaryKey(),
+  tokenId: text('token_id').notNull().references(() => tokens.id),
+  period: text('period', { enum: ['month', 'year'] }).notNull(),
+  /** The token's end before the purchase, so an extension can be undone. */
+  expiresBefore: integer('expires_before', { mode: 'timestamp' }),
+  expiresAfter: integer('expires_after', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type Media = typeof media.$inferSelect;
 export type MediaInsert = typeof media.$inferInsert;
 export type MediaGroup = typeof mediaGroups.$inferSelect;
@@ -92,3 +119,4 @@ export type BatchInsert = typeof batches.$inferInsert;
 export type Token = typeof tokens.$inferSelect;
 export type TokenInsert = typeof tokens.$inferInsert;
 export type TokenMediaUsage = typeof tokenMediaUsage.$inferSelect;
+export type TokenPurchase = typeof tokenPurchases.$inferSelect;

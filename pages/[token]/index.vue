@@ -1,55 +1,99 @@
 <template>
   <div class="flex min-h-screen flex-col items-center p-4" :class="centered ? 'justify-center' : 'py-8'">
-    <PublicAccessLoading v-if="loading" />
-    <PublicAccessDenied
-      v-else-if="!access"
-      :token="token"
-      :reason="denial?.reason"
-      :title="denial?.title"
-      :media-id="denial?.mediaId"
-      :group-id="denial?.groupId"
-    />
-    <!-- A group token unlocks several media, so the visitor picks one instead
-         of being dropped straight into a player. Nothing is spent here. -->
-    <PublicGroupMediaList
-      v-else-if="access.type === 'group'"
-      :token="token"
-      :title="access.title"
-      :expires-at="access.access.expiresAt"
-      :media="access.media"
-    />
-    <PublicMediaPlayer
-      v-else
-      :title="access.title"
-      :embed="access.embed"
-      :expires-at="access.access.expiresAt"
-      :usage-limit="access.access.usageLimit"
-      :usage-count="access.access.usageCount"
-    />
+    <!-- Returning from Mollie: nothing is shown until the payment is known,
+         or someone who just paid would be told their access has ended. -->
+    <PublicAccessLoading v-if="paymentMessage" :message="paymentMessage" />
+    <template v-else>
+      <UAlert
+        v-if="paymentNotice"
+        class="mb-6 max-w-md"
+        color="warning"
+        variant="subtle"
+        icon="i-heroicons-exclamation-circle"
+        :title="paymentNotice"
+      />
+      <PublicAccessLoading v-if="loading" />
+      <PublicAccessDenied
+        v-else-if="!access"
+        :token="token"
+        :reason="denial?.reason"
+        :title="denial?.title"
+        :media-id="denial?.mediaId"
+        :group-id="denial?.groupId"
+        :purchase-options="denial?.purchaseOptions"
+      />
+      <!-- A group token unlocks several media, so the visitor picks one instead
+           of being dropped straight into a player. Nothing is spent here. -->
+      <PublicGroupMediaList
+        v-else-if="access.type === 'group'"
+        :token="token"
+        :title="access.title"
+        :expires-at="access.access.expiresAt"
+        :media="access.media"
+        :purchase-options="access.purchaseOptions"
+      />
+      <PublicMediaPlayer
+        v-else
+        :title="access.title"
+        :embed="access.embed"
+        :expires-at="access.access.expiresAt"
+        :usage-limit="access.access.usageLimit"
+        :usage-count="access.access.usageCount"
+      />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
+
 definePageMeta({
   public: true,
 });
 
 const route = useRoute();
+const { t } = useI18n();
 
 const token = computed(() => route.params.token as string);
 
-const { data: access, error, status } = useFetch(
+const { data: access, error, status, execute } = useFetch(
   () => `/api/access/${encodeURIComponent(token.value)}`,
   // Views a group token spent come back with this list, so returning here
   // after watching must not show the counts from before.
-  { getCachedData: () => undefined },
+  // Held back until a payment the visitor returns with is confirmed: loading
+  // spends a view, and before then it would only report the old expiry.
+  { getCachedData: () => undefined, immediate: false },
 );
 
-const loading = computed(() => status.value === 'pending');
+const { state: paymentState } = usePaymentReturn(token, execute);
+
+const paymentMessage = computed(() => {
+  if (paymentState.value === 'checking') {
+    return t('public_payment_checking');
+  }
+  return paymentState.value === 'pending' ? t('public_payment_pending') : null;
+});
+
+const paymentNotice = computed(() => {
+  if (paymentState.value === 'failed') {
+    return t('public_payment_failed');
+  }
+  // Only worth saying while the token still looks expired; once the webhook
+  // got through, the content is the answer.
+  return paymentState.value === 'timeout' && !access.value ? t('public_payment_timeout') : null;
+});
+
+const loading = computed(() => status.value === 'pending' || status.value === 'idle');
 
 const denial = computed(() => {
   const body = error.value?.data as {
-    data?: { reason?: string, title?: string | null, mediaId?: string | null, groupId?: string | null }
+    data?: {
+      reason?: string
+      title?: string | null
+      mediaId?: string | null
+      groupId?: string | null
+      purchaseOptions?: PurchaseOption[]
+    }
   } | undefined;
   return body?.data;
 });

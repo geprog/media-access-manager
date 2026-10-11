@@ -295,6 +295,10 @@ media-access-manager/
 | `tokens`            | id, token, media_id (nullable), group_id (nullable), batch_id (nullable FK), name, starts_at, expires_at, usage_limit, usage_count, created_at |
 | `batches`           | id, media_id (nullable), group_id (nullable), name, created_at                                                                                 |
 | `token_media_usage` | token_id, media_id, usage_count (PK: token_id + media_id)                                                                                      |
+| `token_purchases`   | payment_id (PK), token_id, period, expires_before, expires_after, created_at                                                                   |
+
+`media` and `media_groups` also carry `price_month` and `price_year` (minor
+units, nullable) for buying access again — see [purchase.md](./purchase.md).
 
 Exactly one of `media_id` and `group_id` is set on `tokens` and on `batches`.
 
@@ -351,6 +355,10 @@ ENCRYPTION_KEY=...           # For Vimeo passwords
 
 # Support contact offered on an expired access link (optional)
 NUXT_PUBLIC_SUPPORT_EMAIL=support@acme.example
+
+# Buying an expired link again through Mollie (optional), see purchase.md
+NUXT_MOLLIE_API_KEY=test_...
+NUXT_PUBLIC_PAYMENT_CURRENCY=EUR
 
 # Publisher of the media, linked in header and footer
 NUXT_PUBLIC_PUBLISHER_NAME=Acme GmbH
