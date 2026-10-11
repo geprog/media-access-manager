@@ -51,6 +51,11 @@
             </li>
           </ul>
         </div>
+        <PurchasePricesCard
+          :group-id="id"
+          :price-month="data.group.priceMonth"
+          :price-year="data.group.priceYear"
+        />
         <TokenBatchesPanel :group-id="id" />
       </div>
     </UCard>
