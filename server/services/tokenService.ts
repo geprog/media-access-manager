@@ -6,7 +6,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
-import { getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
+import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
 
 export { getGroupWindowReason, isTokenValid };
@@ -21,6 +21,18 @@ function targetColumns(target: TokenTarget) {
   return 'mediaId' in target
     ? { mediaId: target.mediaId, groupId: null }
     : { mediaId: null, groupId: target.groupId };
+}
+
+/**
+ * Opens the date window of a token whose validity starts on first use. The
+ * expiry is only filled in while still empty, so of two first views arriving
+ * at once the earlier one sets it and the later one leaves it be.
+ */
+function activationColumns(tokenRow: Token, now: Date = new Date()) {
+  const expiresAt = getActivationExpiry(tokenRow, now);
+  return expiresAt
+    ? { expiresAt: sql`coalesce(${tokens.expiresAt}, ${Math.floor(expiresAt.getTime() / 1000)})` }
+    : {};
 }
 
 function generateTokenString(): string {
@@ -91,11 +103,12 @@ export async function validateAndConsumeToken(tokenValue: string): Promise<Token
     return null;
   }
   const db = useDb();
-  await db
+  const [updated] = await db
     .update(tokens)
-    .set({ usageCount: tokenRow.usageCount + 1 })
-    .where(eq(tokens.id, tokenRow.id));
-  return { ...tokenRow, usageCount: tokenRow.usageCount + 1 };
+    .set({ usageCount: tokenRow.usageCount + 1, ...activationColumns(tokenRow) })
+    .where(eq(tokens.id, tokenRow.id))
+    .returning();
+  return updated ?? null;
 }
 
 /** Views a group token already spent, keyed by media id. */
@@ -171,12 +184,20 @@ export async function resolveGroupMedia(
   };
 }
 
+export interface GroupMediaView {
+  /** Views this token has now spent on the media. */
+  usageCount: number
+  /** The token's expiry, which the very first view may just have set. */
+  expiresAt: Date | null
+}
+
 /**
  * Books one view of `mediaId` against a group token: the media's own counter
  * and, for the admin overview, the token's total. The upsert is what makes a
- * media's first view create its counter row.
+ * media's first view create its counter row. The first view of any media is
+ * also what starts a token whose validity runs from its first use.
  */
-export async function consumeGroupMediaView(tokenRow: Token, mediaId: string): Promise<number> {
+export async function consumeGroupMediaView(tokenRow: Token, mediaId: string): Promise<GroupMediaView> {
   const db = useDb();
   return db.transaction((tx) => {
     const current = tx
@@ -194,11 +215,12 @@ export async function consumeGroupMediaView(tokenRow: Token, mediaId: string): P
     else {
       tx.insert(tokenMediaUsage).values({ tokenId: tokenRow.id, mediaId, usageCount }).run();
     }
-    tx.update(tokens)
-      .set({ usageCount: sql`${tokens.usageCount} + 1` })
+    const updated = tx.update(tokens)
+      .set({ usageCount: sql`${tokens.usageCount} + 1`, ...activationColumns(tokenRow) })
       .where(eq(tokens.id, tokenRow.id))
-      .run();
-    return usageCount;
+      .returning({ expiresAt: tokens.expiresAt })
+      .get();
+    return { usageCount, expiresAt: updated?.expiresAt ?? tokenRow.expiresAt };
   });
 }
 
@@ -207,6 +229,7 @@ export async function createToken(data: TokenTarget & {
   batchId?: string
   startsAt?: Date
   expiresAt?: Date
+  validForSeconds?: number
   usageLimit?: number
 }) {
   const db = useDb();
@@ -221,6 +244,7 @@ export async function createToken(data: TokenTarget & {
     name: data.name,
     startsAt: data.startsAt ?? null,
     expiresAt: data.expiresAt ?? null,
+    validForSeconds: data.validForSeconds ?? null,
     usageLimit: data.usageLimit ?? null,
     usageCount: 0,
     createdAt: new Date(),
@@ -232,6 +256,7 @@ export async function createBatch(target: TokenTarget, count: number, options?: 
   name: string
   startsAt?: Date
   expiresAt?: Date
+  validForSeconds?: number
   usageLimit?: number
 }) {
   const db = useDb();
@@ -259,6 +284,7 @@ export async function createBatch(target: TokenTarget, count: number, options?: 
       name: tokenName,
       startsAt: options?.startsAt ?? null,
       expiresAt: options?.expiresAt ?? null,
+      validForSeconds: options?.validForSeconds ?? null,
       usageLimit: options?.usageLimit ?? null,
       usageCount: 0,
       createdAt: now,

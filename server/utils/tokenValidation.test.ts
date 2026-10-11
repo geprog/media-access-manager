@@ -1,6 +1,6 @@
 import type { TokenLike } from './tokenValidation';
 import { describe, expect, it } from 'vitest';
-import { getTokenInvalidReason, isTokenValid } from './tokenValidation';
+import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from './tokenValidation';
 
 describe('tokenValidation', () => {
   describe('isTokenValid', () => {
@@ -124,6 +124,25 @@ describe('tokenValidation', () => {
         usageCount: 1,
       };
       expect(getTokenInvalidReason(token)).toBe('not_started');
+    });
+  });
+
+  describe('getActivationExpiry', () => {
+    const now = new Date('2026-10-11T12:00:00Z');
+    const DAY_SECONDS = 24 * 60 * 60;
+
+    it('starts the window of a token waiting for its first use', () => {
+      const token = { expiresAt: null, validForSeconds: 7 * DAY_SECONDS };
+      expect(getActivationExpiry(token, now)).toEqual(new Date('2026-10-18T12:00:00Z'));
+    });
+
+    it('leaves a token alone whose window already started', () => {
+      const token = { expiresAt: new Date('2026-10-12T12:00:00Z'), validForSeconds: 7 * DAY_SECONDS };
+      expect(getActivationExpiry(token, now)).toBeNull();
+    });
+
+    it('leaves a token alone whose window started on creation', () => {
+      expect(getActivationExpiry({ expiresAt: null, validForSeconds: null }, now)).toBeNull();
     });
   });
 });

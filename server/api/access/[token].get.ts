@@ -44,6 +44,9 @@ export default defineEventHandler(async (event) => {
       title: group.name,
       access: {
         expiresAt: tokenRow.expiresAt?.toISOString() ?? null,
+        // Until the first media is watched, a token whose validity starts on
+        // first use has no expiry yet — only the duration it will run for.
+        validForSeconds: tokenRow.validForSeconds,
         // The limit belongs to each media on its own, so it is reported per
         // entry below rather than as one number for the whole token.
         usageLimit: tokenRow.usageLimit,
@@ -82,6 +85,7 @@ export default defineEventHandler(async (event) => {
     // their access window is left. Nothing about the token's owner or batch.
     access: {
       expiresAt: tokenRow.expiresAt?.toISOString() ?? null,
+      validForSeconds: tokenRow.validForSeconds,
       usageLimit: tokenRow.usageLimit,
       usageCount: tokenRow.usageCount,
     },

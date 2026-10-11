@@ -18,6 +18,7 @@
       :title="access.title"
       :embed="access.embed"
       :expires-at="access.access.expiresAt"
+      :valid-for-seconds="access.access.validForSeconds"
       :usage-limit="access.access.usageLimit"
       :usage-count="access.access.usageCount"
     >

@@ -12,6 +12,7 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+const WEEK = 7 * DAY;
 /** Calendar months and years vary in length; a visitor reading "in 2 months" does not. */
 const MONTH = 30 * DAY;
 const YEAR = 365 * DAY;
@@ -54,4 +55,31 @@ export function getRemainingViews(usageLimit: number | null, usageCount: number)
     return null;
   }
   return Math.max(0, usageLimit - usageCount);
+}
+
+/** The units an admin can pick for how long a token lasts after its first use. */
+export type DurationUnit = 'minute' | 'hour' | 'day' | 'week';
+
+const UNIT_SECONDS: Record<DurationUnit, number> = {
+  week: WEEK / SECOND,
+  day: DAY / SECOND,
+  hour: HOUR / SECOND,
+  minute: MINUTE / SECOND,
+};
+
+export function durationToSeconds(value: number, unit: DurationUnit): number {
+  return value * UNIT_SECONDS[unit];
+}
+
+/**
+ * A stored duration in the largest unit that holds it exactly, so "7 days"
+ * entered by an admin reads back as "1 week" and never as "168 hours".
+ */
+export function splitDuration(seconds: number): { value: number, unit: DurationUnit } {
+  for (const unit of ['week', 'day', 'hour'] as const) {
+    if (seconds % UNIT_SECONDS[unit] === 0) {
+      return { value: seconds / UNIT_SECONDS[unit], unit };
+    }
+  }
+  return { value: Math.round(seconds / UNIT_SECONDS.minute), unit: 'minute' };
 }

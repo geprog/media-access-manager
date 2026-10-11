@@ -47,16 +47,18 @@ export default defineEventHandler(async (event) => {
   // loaded would quietly eat access the visitor never got. A single-media
   // token has nothing to pick from and books first, as it always has.
   const viewable = await requireViewableMedia(resolved.media.id);
-  // Admins previewing their own link must not use up a visitor's view.
-  const usageCount = isAdmin
-    ? resolved.usageCount
+  // Admins previewing their own link must not use up a visitor's view, nor
+  // start the window of a token whose validity runs from its first use.
+  const { usageCount, expiresAt } = isAdmin
+    ? { usageCount: resolved.usageCount, expiresAt: resolved.token.expiresAt }
     : await consumeGroupMediaView(resolved.token, resolved.media.id);
   return {
     type: 'media' as const,
     title: viewable.title,
     embed: viewable.embed,
     access: {
-      expiresAt: resolved.token.expiresAt?.toISOString() ?? null,
+      expiresAt: expiresAt?.toISOString() ?? null,
+      validForSeconds: resolved.token.validForSeconds,
       usageLimit: resolved.token.usageLimit,
       usageCount,
     },

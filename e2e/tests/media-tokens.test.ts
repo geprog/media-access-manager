@@ -42,7 +42,12 @@ async function openMediaViaUI(page: Page, title: string) {
   await expect(page).toHaveURL(/\/media\/[^/]+/);
 }
 
-interface AccessWindow { expiresAt: string | null, usageLimit: number | null, usageCount: number }
+interface AccessWindow {
+  expiresAt: string | null
+  validForSeconds?: number | null
+  usageLimit: number | null
+  usageCount: number
+}
 
 /** A token with no expiry and no usage limit, i.e. the plainest access window. */
 function openAccess(): AccessWindow {
@@ -373,6 +378,34 @@ test.describe('Media and Tokens', () => {
     await page.reload();
 
     await expect(page.getByText('can be opened 3 more times')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('This link does not expire')).toHaveCount(0);
+  });
+
+  test('starts a token\'s validity on its first use', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1, { validForDays: 3 });
+    expect(token).toBeTruthy();
+
+    // Nobody opened the token yet, so it has a duration but no date.
+    await expect(page.getByRole('cell', { name: '3 days after first use' })).toBeVisible();
+
+    // An admin previewing the link does not start it, so the page still
+    // describes the window by its duration.
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E First Use Video'),
+      access: { expiresAt: null, validForSeconds: 3 * 24 * 60 * 60, usageLimit: null, usageCount: 0 },
+    });
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText('Available for 3 days from the first time you watch')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('This link does not expire')).toHaveCount(0);
   });
 

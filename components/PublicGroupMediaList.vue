@@ -83,6 +83,8 @@ const props = defineProps<{
   /** The group's name, which is all the visitor knows it by. */
   title: string
   expiresAt?: string | null
+  /** How long the token lasts from the first media watched, if not started yet. */
+  validForSeconds?: number | null
   media: GroupMediaEntry[]
 }>();
 
@@ -90,7 +92,11 @@ const { t } = useI18n();
 
 const expiresAtDate = computed(() => (props.expiresAt ? new Date(props.expiresAt) : null));
 // A group token's date window is shared, so a single label covers the list.
-const expiryLabel = useExpiryLabel(expiresAtDate, () => props.media.some(entry => entry.usageLimit != null));
+const expiryLabel = useExpiryLabel(
+  expiresAtDate,
+  () => props.media.some(entry => entry.usageLimit != null),
+  () => props.validForSeconds ?? null,
+);
 
 const hasBlockedMedia = computed(() => props.media.some(entry => entry.blockedBy));
 

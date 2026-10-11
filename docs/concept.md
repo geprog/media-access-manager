@@ -110,9 +110,20 @@ interface MediaItem {
 - **Date range**: `starts_at`, `expires_at` (nullable)
 - **Max usage**: `usage_limit` (nullable), `usage_count`
 
+**Validity start** – chosen per batch when tokens are created:
+
+- **Immediately** (default): the date window is fixed on creation, with an
+  optional `expires_at`.
+- **On first use**: the token stores a duration in `valid_for_seconds` and
+  keeps `expires_at` empty. The first view a visitor spends sets
+  `expires_at = now + valid_for_seconds`; from then on the token behaves like
+  any other. Both are exclusive — a token never has a fixed expiry date and a
+  first-use duration at once. Admin previews do not count as first use. For a
+  group token, browsing the list is free, so the first media watched starts it.
+
 **Schema** (simplified):
 
-- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `usage_limit`, `usage_count`, `created_at`
+- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for_seconds` (nullable), `usage_limit`, `usage_count`, `created_at`
 - No `TokenUsage`, `TokenAnalytics` tables
 
 **Validation logic**:
@@ -120,7 +131,7 @@ interface MediaItem {
 - If `starts_at` is set and now < `starts_at` → invalid
 - If `expires_at` is set and now > `expires_at` → invalid
 - If `usage_limit` is set and `usage_count >= usage_limit` → invalid
-- If valid: increment `usage_count`, return embed; if invalid: show "Contact support" message
+- If valid: increment `usage_count` (and set `expires_at` on a first-use token's first view), return embed; if invalid: show "Contact support" message
 
 ### Media groups and group tokens
 

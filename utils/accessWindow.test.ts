@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getRemainingTime, getRemainingViews } from './accessWindow';
+import { durationToSeconds, getRemainingTime, getRemainingViews, splitDuration } from './accessWindow';
 
 const now = new Date('2026-08-29T12:00:00Z');
 
@@ -70,6 +70,36 @@ describe('accessWindow', () => {
 
     it('never returns a negative count', () => {
       expect(getRemainingViews(5, 8)).toBe(0);
+    });
+  });
+
+  describe('splitDuration', () => {
+    it('reports whole weeks as weeks', () => {
+      expect(splitDuration(14 * DAY / SECOND)).toEqual({ value: 2, unit: 'week' });
+    });
+
+    it('reports whole days that are no whole week as days', () => {
+      expect(splitDuration(10 * DAY / SECOND)).toEqual({ value: 10, unit: 'day' });
+    });
+
+    it('reports whole hours that are no whole day as hours', () => {
+      expect(splitDuration(36 * HOUR / SECOND)).toEqual({ value: 36, unit: 'hour' });
+    });
+
+    it('falls back to minutes for anything finer', () => {
+      expect(splitDuration(90 * MINUTE / SECOND)).toEqual({ value: 90, unit: 'minute' });
+    });
+  });
+
+  describe('durationToSeconds', () => {
+    it('converts each unit into seconds', () => {
+      expect(durationToSeconds(3, 'hour')).toBe(3 * HOUR / SECOND);
+      expect(durationToSeconds(2, 'day')).toBe(2 * DAY / SECOND);
+      expect(durationToSeconds(1, 'week')).toBe(7 * DAY / SECOND);
+    });
+
+    it('round-trips through splitDuration', () => {
+      expect(splitDuration(durationToSeconds(5, 'day'))).toEqual({ value: 5, unit: 'day' });
     });
   });
 });

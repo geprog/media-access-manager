@@ -56,12 +56,18 @@ const props = defineProps<{
   embed?: Embed | null
   /** ISO timestamp the token expires at, `null` when it never does. */
   expiresAt?: string | null
+  /** How long a token not used before lasts from its first use. */
+  validForSeconds?: number | null
   usageLimit?: number | null
   usageCount?: number
 }>();
 
 const expiresAtDate = computed(() => (props.expiresAt ? new Date(props.expiresAt) : null));
-const expiryLabel = useExpiryLabel(expiresAtDate, () => props.usageLimit != null);
+const expiryLabel = useExpiryLabel(
+  expiresAtDate,
+  () => props.usageLimit != null,
+  () => props.validForSeconds ?? null,
+);
 
 const remainingViews = computed(() =>
   getRemainingViews(props.usageLimit ?? null, props.usageCount ?? 0),

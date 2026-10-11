@@ -1,0 +1,1 @@
+ALTER TABLE `tokens` ADD `valid_for_seconds` integer;

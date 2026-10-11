@@ -5,6 +5,8 @@ export interface TokenRow {
   usageCount: number
   usageLimit: number | null
   expiresAt: string | null
+  /** Set while a token waits for the first use that starts its validity. */
+  validForSeconds: number | null
   batchId: string | null
 }
 

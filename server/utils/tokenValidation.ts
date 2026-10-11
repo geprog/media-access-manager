@@ -30,3 +30,28 @@ export function isTokenValid(
 ): boolean {
   return getTokenInvalidReason(tokenRow, now) === null;
 }
+
+/** The part of a token that decides when its date window opens. */
+export interface ActivatableToken {
+  expiresAt: Date | null
+  /**
+   * Set on a token whose window starts on first use rather than on creation:
+   * how long it stays valid from then on.
+   */
+  validForSeconds: number | null
+}
+
+/**
+ * The expiry a token gets from the view about to be spent, or `null` when that
+ * view changes nothing — because the window already started, or because it
+ * started the moment the token was created.
+ */
+export function getActivationExpiry(
+  tokenRow: ActivatableToken,
+  now: Date = new Date(),
+): Date | null {
+  if (tokenRow.expiresAt || tokenRow.validForSeconds == null) {
+    return null;
+  }
+  return new Date(now.getTime() + tokenRow.validForSeconds * 1000);
+}

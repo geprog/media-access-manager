@@ -58,7 +58,16 @@ export const tokens = sqliteTable('tokens', {
   batchId: text('batch_id').references(() => batches.id),
   name: text('name').notNull(),
   startsAt: integer('starts_at', { mode: 'timestamp' }),
+  /**
+   * Stays `null` on a token waiting for its first use until that use sets it
+   * from `validForSeconds`.
+   */
   expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  /**
+   * How long the token lasts from its first use, set only on a token whose
+   * validity starts then instead of on creation.
+   */
+  validForSeconds: integer('valid_for_seconds'),
   /**
    * On a group token this is the limit for *each* media of the group, not for
    * the token as a whole.

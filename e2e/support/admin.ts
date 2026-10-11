@@ -106,7 +106,7 @@ export async function createTokenViaUI(
   page: Page,
   batchName: string,
   count = 1,
-  options: { usageLimit?: number } = {},
+  options: { usageLimit?: number, validForDays?: number } = {},
 ): Promise<string> {
   await page.getByRole('button', { name: 'Create new Tokens' }).click();
   const dialog = page.getByRole('dialog');
@@ -114,6 +114,11 @@ export async function createTokenViaUI(
   await dialog.getByLabel('Count').fill(String(count));
   if (options.usageLimit != null) {
     await dialog.getByLabel('Usage limit').fill(String(options.usageLimit));
+  }
+  if (options.validForDays != null) {
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    // Days is the preselected unit, so only the number needs filling in.
+    await dialog.getByLabel('Valid for').fill(String(options.validForDays));
   }
   await dialog.getByRole('button', { name: 'Create new Tokens' }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });

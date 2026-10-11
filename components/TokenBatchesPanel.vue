@@ -127,8 +127,34 @@
             >
               <UInput v-model.number="batchForm.usageLimit" type="number" min="1" />
             </UFormField>
-            <UFormField :label="$t('token_expires_at')">
+            <UFormField :label="$t('token_validity_start')">
+              <URadioGroup
+                v-model="batchForm.validityStart"
+                :items="validityStartOptions"
+              />
+            </UFormField>
+            <UFormField v-if="batchForm.validityStart === 'immediately'" :label="$t('token_expires_at')">
               <UInput v-model="batchForm.expiresAt" type="datetime-local" />
+            </UFormField>
+            <UFormField
+              v-else
+              :label="$t('token_valid_for')"
+              :hint="$t('token_valid_for_hint')"
+            >
+              <div class="flex gap-2">
+                <UInput
+                  v-model.number="batchForm.validForValue"
+                  type="number"
+                  min="1"
+                  required
+                  class="w-28"
+                />
+                <USelect
+                  v-model="batchForm.validForUnit"
+                  :items="validForUnitOptions"
+                  class="w-36"
+                />
+              </div>
             </UFormField>
             <UButton type="submit" class="mt-4">
               {{ $t('create_new_tokens') }}
@@ -142,8 +168,10 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
+import type { DurationUnit } from '~/utils/accessWindow';
 import type { TokenRow } from '~/utils/tokens';
 import { h, resolveComponent } from 'vue';
+import { durationToSeconds } from '~/utils/accessWindow';
 import { groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
@@ -167,7 +195,33 @@ const { data: tokens, status: tokensStatus, refresh: refreshTokens } = useFetch(
 const showBatchModal = ref(false);
 const showExportModal = ref(false);
 const exportBatchId = ref<string | null>(null);
-const batchForm = ref({ name: '', count: 50, usageLimit: null as number | null, expiresAt: '' });
+function emptyBatchForm() {
+  return {
+    name: '',
+    count: 50,
+    usageLimit: null as number | null,
+    /** Whether the tokens count down from now or from each one's first use. */
+    validityStart: 'immediately' as 'immediately' | 'first_use',
+    expiresAt: '',
+    validForValue: 7,
+    validForUnit: 'day' as DurationUnit,
+  };
+}
+
+const batchForm = ref(emptyBatchForm());
+
+const validityStartOptions = computed(() => [
+  { label: t('token_validity_start_immediately'), value: 'immediately' },
+  { label: t('token_validity_start_first_use'), value: 'first_use' },
+]);
+
+const validForUnitOptions = computed(() => [
+  { label: t('duration_unit_hours'), value: 'hour' },
+  { label: t('duration_unit_days'), value: 'day' },
+  { label: t('duration_unit_weeks'), value: 'week' },
+]);
+
+const formatDuration = useDurationFormatter();
 const exportForm = ref({
   format: 'zip' as 'zip' | 'pdf-one' | 'pdf-grid',
   sizeCm: 5,
@@ -259,6 +313,20 @@ function usageText(row: TokenRow): string {
     : String(row.usageCount);
 }
 
+/**
+ * A token whose validity starts on first use has no date to show until then,
+ * only the duration it will run for once opened.
+ */
+function expiresText(row: TokenRow): string {
+  if (row.expiresAt) {
+    return formatDate(row.expiresAt);
+  }
+  if (row.validForSeconds != null) {
+    return t('tokens_expires_after_first_use', { duration: formatDuration(row.validForSeconds) });
+  }
+  return '—';
+}
+
 const tokenColumns: TableColumn<TokenRow>[] = [
   {
     accessorKey: 'name',
@@ -278,7 +346,7 @@ const tokenColumns: TableColumn<TokenRow>[] = [
   {
     id: 'expires',
     header: t('tokens_expires'),
-    cell: ({ row }) => row.original.expiresAt ? formatDate(row.original.expiresAt) : '—',
+    cell: ({ row }) => expiresText(row.original),
   },
   {
     id: 'actions',
@@ -305,14 +373,20 @@ async function handleCreateBatch() {
   };
   if (batchForm.value.usageLimit)
     body.usageLimit = batchForm.value.usageLimit;
-  if (batchForm.value.expiresAt)
+  if (batchForm.value.validityStart === 'first_use') {
+    if (!batchForm.value.validForValue || batchForm.value.validForValue < 1)
+      return;
+    body.validForSeconds = Math.round(durationToSeconds(batchForm.value.validForValue, batchForm.value.validForUnit));
+  }
+  else if (batchForm.value.expiresAt) {
     body.expiresAt = batchForm.value.expiresAt;
+  }
   await $fetch('/api/batches', {
     method: 'POST',
     body,
   });
   showBatchModal.value = false;
-  batchForm.value = { name: '', count: 50, usageLimit: null, expiresAt: '' };
+  batchForm.value = emptyBatchForm();
   await Promise.all([refreshBatches(), refreshTokens()]);
 }
 </script>

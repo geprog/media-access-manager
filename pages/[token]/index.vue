@@ -16,6 +16,7 @@
       :token="token"
       :title="access.title"
       :expires-at="access.access.expiresAt"
+      :valid-for-seconds="access.access.validForSeconds"
       :media="access.media"
     />
     <PublicMediaPlayer
@@ -23,6 +24,7 @@
       :title="access.title"
       :embed="access.embed"
       :expires-at="access.access.expiresAt"
+      :valid-for-seconds="access.access.validForSeconds"
       :usage-limit="access.access.usageLimit"
       :usage-count="access.access.usageCount"
     />
