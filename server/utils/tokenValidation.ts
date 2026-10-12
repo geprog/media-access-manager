@@ -1,3 +1,6 @@
+import type { ValidityDuration } from '~/utils/accessWindow';
+import { addValidity } from '~/utils/accessWindow';
+
 export interface TokenLike {
   startsAt: Date | null
   expiresAt: Date | null
@@ -38,7 +41,7 @@ export interface ActivatableToken {
    * Set on a token whose window starts on first use rather than on creation:
    * how long it stays valid from then on.
    */
-  validForSeconds: number | null
+  validFor: ValidityDuration | null
 }
 
 /**
@@ -50,8 +53,8 @@ export function getActivationExpiry(
   tokenRow: ActivatableToken,
   now: Date = new Date(),
 ): Date | null {
-  if (tokenRow.expiresAt || tokenRow.validForSeconds == null) {
+  if (tokenRow.expiresAt || !tokenRow.validFor) {
     return null;
   }
-  return new Date(now.getTime() + tokenRow.validForSeconds * 1000);
+  return addValidity(now, tokenRow.validFor);
 }

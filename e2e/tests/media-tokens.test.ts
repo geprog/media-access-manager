@@ -44,7 +44,7 @@ async function openMediaViaUI(page: Page, title: string) {
 
 interface AccessWindow {
   expiresAt: string | null
-  validForSeconds?: number | null
+  validFor?: Record<string, number> | null
   usageLimit: number | null
   usageCount: number
 }
@@ -402,7 +402,7 @@ test.describe('Media and Tokens', () => {
     await mockAccess(page, {
       title,
       embed: videoEmbed('E2E First Use Video'),
-      access: { expiresAt: null, validForSeconds: 3 * 24 * 60 * 60, usageLimit: null, usageCount: 0 },
+      access: { expiresAt: null, validFor: { days: 3 }, usageLimit: null, usageCount: 0 },
     });
     await page.goto(`/${token}`);
 

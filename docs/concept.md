@@ -114,16 +114,19 @@ interface MediaItem {
 
 - **Immediately** (default): the date window is fixed on creation, with an
   optional `expires_at`.
-- **On first use**: the token stores a duration in `valid_for_seconds` and
-  keeps `expires_at` empty. The first view a visitor spends sets
-  `expires_at = now + valid_for_seconds`; from then on the token behaves like
-  any other. Both are exclusive — a token never has a fixed expiry date and a
+- **On first use**: the token stores a duration in `valid_for` — one unit out
+  of hours, days, weeks or months, e.g. `{"months": 2}` — and keeps
+  `expires_at` empty. The first view a visitor spends sets
+  `expires_at = now + valid_for`; from then on the token behaves like any
+  other. Months are calendar months (via `date-fns`): 10.02. plus two months
+  is 10.04., and 31.12. plus two months is 28.02., because a day the target
+  month lacks falls back to its last one. Both are exclusive — a token never has a fixed expiry date and a
   first-use duration at once. Admin previews do not count as first use. For a
   group token, browsing the list is free, so the first media watched starts it.
 
 **Schema** (simplified):
 
-- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for_seconds` (nullable), `usage_limit`, `usage_count`, `created_at`
+- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for` (nullable JSON), `usage_limit`, `usage_count`, `created_at`
 - No `TokenUsage`, `TokenAnalytics` tables
 
 **Validation logic**:

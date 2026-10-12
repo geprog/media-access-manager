@@ -1,6 +1,7 @@
 import type { Media, MediaGroup, Token } from '../db/schema';
 import type { GroupMediaAccess } from '../utils/groupAccess';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
+import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
@@ -229,7 +230,7 @@ export async function createToken(data: TokenTarget & {
   batchId?: string
   startsAt?: Date
   expiresAt?: Date
-  validForSeconds?: number
+  validFor?: ValidityDuration
   usageLimit?: number
 }) {
   const db = useDb();
@@ -244,7 +245,7 @@ export async function createToken(data: TokenTarget & {
     name: data.name,
     startsAt: data.startsAt ?? null,
     expiresAt: data.expiresAt ?? null,
-    validForSeconds: data.validForSeconds ?? null,
+    validFor: data.validFor ?? null,
     usageLimit: data.usageLimit ?? null,
     usageCount: 0,
     createdAt: new Date(),
@@ -256,7 +257,7 @@ export async function createBatch(target: TokenTarget, count: number, options?: 
   name: string
   startsAt?: Date
   expiresAt?: Date
-  validForSeconds?: number
+  validFor?: ValidityDuration
   usageLimit?: number
 }) {
   const db = useDb();
@@ -284,7 +285,7 @@ export async function createBatch(target: TokenTarget, count: number, options?: 
       name: tokenName,
       startsAt: options?.startsAt ?? null,
       expiresAt: options?.expiresAt ?? null,
-      validForSeconds: options?.validForSeconds ?? null,
+      validFor: options?.validFor ?? null,
       usageLimit: options?.usageLimit ?? null,
       usageCount: 0,
       createdAt: now,

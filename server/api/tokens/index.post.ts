@@ -1,4 +1,5 @@
 import type { TokenTarget } from '../../services/tokenService';
+import { parseValidityDuration } from '~/utils/accessWindow';
 import { createToken } from '../../services/tokenService';
 
 export default defineEventHandler(async (event) => {
@@ -8,7 +9,7 @@ export default defineEventHandler(async (event) => {
     name?: string
     startsAt?: string
     expiresAt?: string
-    validForSeconds?: number
+    validFor?: unknown
     usageLimit?: number
   }>(event);
   const name = body?.name ?? '';
@@ -22,8 +23,8 @@ export default defineEventHandler(async (event) => {
   }
   // A token's validity starts either on creation, optionally up to a fixed
   // expiry date, or on its first use for a fixed duration — not both.
-  const validForSeconds = body?.validForSeconds;
-  if (validForSeconds != null && (!Number.isInteger(validForSeconds) || validForSeconds < 1 || body?.expiresAt)) {
+  const validFor = body?.validFor == null ? null : parseValidityDuration(body.validFor);
+  if (body?.validFor != null && (!validFor || body?.expiresAt)) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
   const options: Parameters<typeof createToken>[0] = { ...target, name };
@@ -31,8 +32,8 @@ export default defineEventHandler(async (event) => {
     options.startsAt = new Date(body.startsAt);
   if (body?.expiresAt)
     options.expiresAt = new Date(body.expiresAt);
-  if (validForSeconds != null)
-    options.validForSeconds = validForSeconds;
+  if (validFor)
+    options.validFor = validFor;
   if (body?.usageLimit != null)
     options.usageLimit = body.usageLimit;
   return createToken(options);

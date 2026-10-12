@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
     embed: viewable.embed,
     access: {
       expiresAt: expiresAt?.toISOString() ?? null,
-      validForSeconds: resolved.token.validForSeconds,
+      validFor: resolved.token.validFor,
       usageLimit: resolved.token.usageLimit,
       usageCount,
     },

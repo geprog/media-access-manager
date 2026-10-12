@@ -1,5 +1,6 @@
 import type { MaybeRefOrGetter } from 'vue';
-import { getRemainingTime, splitDuration } from '~/utils/accessWindow';
+import type { ValidityDuration } from '~/utils/accessWindow';
+import { getRemainingTime } from '~/utils/accessWindow';
 
 /**
  * Someone may leave the page open far longer than their access lasts, so the
@@ -23,14 +24,12 @@ export function useNow(intervalMs = REMAINING_TIME_REFRESH_MS) {
   return now;
 }
 
-/** Words a stored duration such as a token's `validForSeconds` ("7 days"). */
+/** Words a duration such as a token's `validFor` ("2 months"). */
 export function useDurationFormatter() {
   const { locale } = useI18n();
 
-  return (seconds: number) => {
-    const { value, unit } = splitDuration(seconds);
-    return new Intl.NumberFormat(locale.value, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
-  };
+  return (duration: ValidityDuration) =>
+    new Intl.DurationFormat(locale.value, { style: 'long' }).format(duration);
 }
 
 /**
@@ -45,7 +44,7 @@ export function useDurationFormatter() {
 export function useExpiryLabel(
   expiresAt: MaybeRefOrGetter<Date | null>,
   hasUsageLimit: MaybeRefOrGetter<boolean>,
-  validForSeconds: MaybeRefOrGetter<number | null> = null,
+  validFor: MaybeRefOrGetter<ValidityDuration | null> = null,
 ) {
   const { t, locale } = useI18n();
   const now = useNow();
@@ -54,9 +53,9 @@ export function useExpiryLabel(
   return computed(() => {
     const expiry = toValue(expiresAt);
     if (!expiry) {
-      const validFor = toValue(validForSeconds);
-      if (validFor != null) {
-        return t('public_access_starts_on_first_use', { duration: formatDuration(validFor) });
+      const duration = toValue(validFor);
+      if (duration) {
+        return t('public_access_starts_on_first_use', { duration: formatDuration(duration) });
       }
       return toValue(hasUsageLimit) ? null : t('public_access_no_expiry');
     }

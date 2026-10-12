@@ -146,6 +146,7 @@
                   v-model.number="batchForm.validForValue"
                   type="number"
                   min="1"
+                  step="1"
                   required
                   class="w-28"
                 />
@@ -168,10 +169,9 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
-import type { DurationUnit } from '~/utils/accessWindow';
+import type { ValidityUnit } from '~/utils/accessWindow';
 import type { TokenRow } from '~/utils/tokens';
 import { h, resolveComponent } from 'vue';
-import { durationToSeconds } from '~/utils/accessWindow';
 import { groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
@@ -204,7 +204,7 @@ function emptyBatchForm() {
     validityStart: 'immediately' as 'immediately' | 'first_use',
     expiresAt: '',
     validForValue: 7,
-    validForUnit: 'day' as DurationUnit,
+    validForUnit: 'days' as ValidityUnit,
   };
 }
 
@@ -216,9 +216,10 @@ const validityStartOptions = computed(() => [
 ]);
 
 const validForUnitOptions = computed(() => [
-  { label: t('duration_unit_hours'), value: 'hour' },
-  { label: t('duration_unit_days'), value: 'day' },
-  { label: t('duration_unit_weeks'), value: 'week' },
+  { label: t('duration_unit_hours'), value: 'hours' },
+  { label: t('duration_unit_days'), value: 'days' },
+  { label: t('duration_unit_weeks'), value: 'weeks' },
+  { label: t('duration_unit_months'), value: 'months' },
 ]);
 
 const formatDuration = useDurationFormatter();
@@ -321,8 +322,8 @@ function expiresText(row: TokenRow): string {
   if (row.expiresAt) {
     return formatDate(row.expiresAt);
   }
-  if (row.validForSeconds != null) {
-    return t('tokens_expires_after_first_use', { duration: formatDuration(row.validForSeconds) });
+  if (row.validFor) {
+    return t('tokens_expires_after_first_use', { duration: formatDuration(row.validFor) });
   }
   return '—';
 }
@@ -374,9 +375,9 @@ async function handleCreateBatch() {
   if (batchForm.value.usageLimit)
     body.usageLimit = batchForm.value.usageLimit;
   if (batchForm.value.validityStart === 'first_use') {
-    if (!batchForm.value.validForValue || batchForm.value.validForValue < 1)
+    if (!Number.isInteger(batchForm.value.validForValue) || batchForm.value.validForValue < 1)
       return;
-    body.validForSeconds = Math.round(durationToSeconds(batchForm.value.validForValue, batchForm.value.validForUnit));
+    body.validFor = { [batchForm.value.validForUnit]: batchForm.value.validForValue };
   }
   else if (batchForm.value.expiresAt) {
     body.expiresAt = batchForm.value.expiresAt;

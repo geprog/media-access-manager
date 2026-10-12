@@ -71,6 +71,7 @@
   "duration_unit_hours": "Hours",
   "duration_unit_days": "Days",
   "duration_unit_weeks": "Weeks",
+  "duration_unit_months": "Months",
   "tokens_expires_after_first_use": "{duration} after first use",
   "public_access_starts_on_first_use": "Available for {duration} from the first time you watch",
   "batches_title": "Batches",

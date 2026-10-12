@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+import type { ValidityDuration } from '~/utils/accessWindow';
 import { getRemainingViews } from '~/utils/accessWindow';
 
 /** As much of an oEmbed response as a player needs to render it. */
@@ -57,7 +58,7 @@ const props = defineProps<{
   /** ISO timestamp the token expires at, `null` when it never does. */
   expiresAt?: string | null
   /** How long a token not used before lasts from its first use. */
-  validForSeconds?: number | null
+  validFor?: ValidityDuration | null
   usageLimit?: number | null
   usageCount?: number
 }>();
@@ -66,7 +67,7 @@ const expiresAtDate = computed(() => (props.expiresAt ? new Date(props.expiresAt
 const expiryLabel = useExpiryLabel(
   expiresAtDate,
   () => props.usageLimit != null,
-  () => props.validForSeconds ?? null,
+  () => props.validFor ?? null,
 );
 
 const remainingViews = computed(() =>

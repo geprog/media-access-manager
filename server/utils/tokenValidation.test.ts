@@ -128,21 +128,25 @@ describe('tokenValidation', () => {
   });
 
   describe('getActivationExpiry', () => {
-    const now = new Date('2026-10-11T12:00:00Z');
-    const DAY_SECONDS = 24 * 60 * 60;
+    const now = new Date(2026, 11, 31, 12);
 
     it('starts the window of a token waiting for its first use', () => {
-      const token = { expiresAt: null, validForSeconds: 7 * DAY_SECONDS };
-      expect(getActivationExpiry(token, now)).toEqual(new Date('2026-10-18T12:00:00Z'));
+      const token = { expiresAt: null, validFor: { days: 7 } };
+      expect(getActivationExpiry(token, now)).toEqual(new Date(2027, 0, 7, 12));
+    });
+
+    it('counts months by the calendar', () => {
+      const token = { expiresAt: null, validFor: { months: 2 } };
+      expect(getActivationExpiry(token, now)).toEqual(new Date(2027, 1, 28, 12));
     });
 
     it('leaves a token alone whose window already started', () => {
-      const token = { expiresAt: new Date('2026-10-12T12:00:00Z'), validForSeconds: 7 * DAY_SECONDS };
+      const token = { expiresAt: new Date(2027, 0, 1), validFor: { days: 7 } };
       expect(getActivationExpiry(token, now)).toBeNull();
     });
 
     it('leaves a token alone whose window started on creation', () => {
-      expect(getActivationExpiry({ expiresAt: null, validForSeconds: null }, now)).toBeNull();
+      expect(getActivationExpiry({ expiresAt: null, validFor: null }, now)).toBeNull();
     });
   });
 });

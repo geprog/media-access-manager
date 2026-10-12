@@ -1,8 +1,5 @@
 minimumReleaseAge: 1440
 minimumReleaseAgeExcludePrune: true
-minimumReleaseAgeExclude:
-  - ioredis@5.10.0
-
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 267840
 strictPeerDependencies: true

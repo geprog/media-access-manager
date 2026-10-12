@@ -66,6 +66,7 @@
 </template>
 
 <script setup lang="ts">
+import type { ValidityDuration } from '~/utils/accessWindow';
 import { getRemainingViews } from '~/utils/accessWindow';
 import { buildMailtoLink } from '~/utils/mailto';
 
@@ -84,7 +85,7 @@ const props = defineProps<{
   title: string
   expiresAt?: string | null
   /** How long the token lasts from the first media watched, if not started yet. */
-  validForSeconds?: number | null
+  validFor?: ValidityDuration | null
   media: GroupMediaEntry[]
 }>();
 
@@ -95,7 +96,7 @@ const expiresAtDate = computed(() => (props.expiresAt ? new Date(props.expiresAt
 const expiryLabel = useExpiryLabel(
   expiresAtDate,
   () => props.media.some(entry => entry.usageLimit != null),
-  () => props.validForSeconds ?? null,
+  () => props.validFor ?? null,
 );
 
 const hasBlockedMedia = computed(() => props.media.some(entry => entry.blockedBy));

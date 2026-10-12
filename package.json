@@ -29,6 +29,7 @@
     "bcrypt": "6.0.0",
     "better-sqlite3": "13.0.3",
     "culori": "4.0.2",
+    "date-fns": "4.4.0",
     "drizzle-orm": "0.45.4",
     "nuxt": "4.5.2",
     "nuxt-auth-utils": "0.5.31",
