@@ -1,4 +1,5 @@
 import type { QRPdfLayout } from '../../../services/qrService';
+import { parseQRGridSpacing } from '~/utils/qrGrid';
 import { createQRPdf } from '../../../services/qrService';
 import { findBatchById, listTokensByBatchId } from '../../../services/tokenService';
 
@@ -12,6 +13,7 @@ export default defineEventHandler(async (event) => {
   const sizeCm = Math.min(15, Math.max(2, Number(query.sizeCm) || 5));
   const cols = Math.min(6, Math.max(1, Math.floor(Number(query.cols) || 3)));
   const rows = Math.min(8, Math.max(1, Math.floor(Number(query.rows) || 4)));
+  const spacing = parseQRGridSpacing(query);
   const showToken = String(query.showToken).toLowerCase() === 'true' || query.showToken === '1';
 
   if (layout !== 'one-per-page' && layout !== 'grid') {
@@ -31,7 +33,7 @@ export default defineEventHandler(async (event) => {
   const batchName = batch?.name ?? '';
   const options = layout === 'one-per-page'
     ? { sizeCm, showToken }
-    : { grid: { cols, rows }, showToken };
+    : { grid: { cols, rows, spacing }, showToken };
   const pdf = await createQRPdf(tokensWithName, appUrl, batchName, layout, options);
 
   const layoutSuffix = layout === 'grid' ? '-grid' : '';

@@ -84,9 +84,54 @@
                 v-model.number="exportForm.gridRows"
                 type="number"
                 min="1"
-                max="10"
+                max="8"
               />
             </UFormField>
+            <UFormField :label="$t('qr_export_grid_margins')" :hint="$t('qr_export_grid_margins_hint')">
+              <div class="grid grid-cols-2 gap-2">
+                <UFormField
+                  v-for="field in spacingFields.margins"
+                  :key="field.key"
+                  :label="$t(field.label)"
+                  size="xs"
+                >
+                  <UInput
+                    v-model.number="exportForm.spacing[field.key]"
+                    type="number"
+                    min="0"
+                    :max="QR_GRID_SPACING_MAX_CM"
+                    step="0.05"
+                  />
+                </UFormField>
+              </div>
+            </UFormField>
+            <UFormField :label="$t('qr_export_grid_gaps')" :hint="$t('qr_export_grid_gaps_hint')">
+              <div class="grid grid-cols-2 gap-2">
+                <UFormField
+                  v-for="field in spacingFields.gaps"
+                  :key="field.key"
+                  :label="$t(field.label)"
+                  size="xs"
+                >
+                  <UInput
+                    v-model.number="exportForm.spacing[field.key]"
+                    type="number"
+                    min="0"
+                    :max="QR_GRID_SPACING_MAX_CM"
+                    step="0.05"
+                  />
+                </UFormField>
+              </div>
+            </UFormField>
+            <p v-if="gridCellSize" class="text-sm text-muted">
+              {{ $t('qr_export_grid_cell_size', gridCellSize) }}
+            </p>
+            <UAlert
+              v-else
+              color="error"
+              variant="subtle"
+              :description="$t('qr_export_grid_no_room')"
+            />
           </template>
           <UCheckbox
             v-model="exportForm.showToken"
@@ -100,7 +145,7 @@
             >
               {{ $t('cancel') }}
             </UButton>
-            <UButton type="submit">
+            <UButton type="submit" :disabled="exportForm.format === 'pdf-grid' && !gridCellSize">
               {{ $t('qr_export_download') }}
             </UButton>
           </div>
@@ -170,8 +215,10 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
 import type { ValidityUnit } from '~/utils/accessWindow';
+import type { QRGridSpacing } from '~/utils/qrGrid';
 import type { TokenRow } from '~/utils/tokens';
 import { h, resolveComponent } from 'vue';
+import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
 import { groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
@@ -223,12 +270,48 @@ const validForUnitOptions = computed(() => [
 ]);
 
 const formatDuration = useDurationFormatter();
-const exportForm = ref({
-  format: 'zip' as 'zip' | 'pdf-one' | 'pdf-grid',
-  sizeCm: 5,
-  gridCols: 3,
-  gridRows: 4,
-  showToken: false,
+function emptyExportForm() {
+  return {
+    format: 'zip' as 'zip' | 'pdf-one' | 'pdf-grid',
+    sizeCm: 5,
+    gridCols: 3,
+    gridRows: 4,
+    spacing: { ...DEFAULT_QR_GRID_SPACING },
+    showToken: false,
+  };
+}
+
+const exportForm = ref(emptyExportForm());
+
+const spacingFields: Record<'margins' | 'gaps', { key: keyof QRGridSpacing, label: string }[]> = {
+  margins: [
+    { key: 'marginTop', label: 'qr_export_grid_margin_top' },
+    { key: 'marginBottom', label: 'qr_export_grid_margin_bottom' },
+    { key: 'marginLeft', label: 'qr_export_grid_margin_left' },
+    { key: 'marginRight', label: 'qr_export_grid_margin_right' },
+  ],
+  gaps: [
+    { key: 'gapX', label: 'qr_export_grid_gap_x' },
+    { key: 'gapY', label: 'qr_export_grid_gap_y' },
+  ],
+};
+
+function gridCols() {
+  return Math.min(6, Math.max(1, Math.floor(exportForm.value.gridCols || 1)));
+}
+
+function gridRows() {
+  return Math.min(8, Math.max(1, Math.floor(exportForm.value.gridRows || 1)));
+}
+
+/** The label size the spacing leaves, so it can be checked against the sticker sheet. */
+const gridCellSize = computed(() => {
+  const cells = computeQRGridCells(gridCols(), gridRows(), parseQRGridSpacing(exportForm.value.spacing));
+  const cell = cells?.[0];
+  if (!cell)
+    return null;
+  const format = (cm: number) => (Math.round(cm * 100) / 100).toLocaleString();
+  return { width: format(cell.width), height: format(cell.height) };
 });
 
 const exportFormatOptions = computed(() => [
@@ -239,7 +322,7 @@ const exportFormatOptions = computed(() => [
 
 function openExportModal(batchId: string) {
   exportBatchId.value = batchId;
-  exportForm.value = { format: 'zip', sizeCm: 5, gridCols: 3, gridRows: 4, showToken: false };
+  exportForm.value = emptyExportForm();
   showExportModal.value = true;
 }
 
@@ -247,16 +330,22 @@ function handleExportDownload() {
   const batchId = exportBatchId.value;
   if (!batchId)
     return;
-  const { format, sizeCm, gridCols, gridRows, showToken } = exportForm.value;
+  const { format, sizeCm, showToken } = exportForm.value;
   let url: string;
   if (format === 'zip') {
     const size = Math.min(15, Math.max(2, sizeCm));
     url = `/api/batches/${batchId}/qr-zip?sizeCm=${size}&showToken=${showToken}`;
   }
   else if (format === 'pdf-grid') {
-    const cols = Math.min(6, Math.max(1, Math.floor(gridCols)));
-    const rows = Math.min(8, Math.max(1, Math.floor(gridRows)));
-    url = `/api/batches/${batchId}/qr-pdf?layout=grid&cols=${cols}&rows=${rows}&showToken=${showToken}`;
+    const params = new URLSearchParams({
+      layout: 'grid',
+      cols: String(gridCols()),
+      rows: String(gridRows()),
+      showToken: String(showToken),
+    });
+    for (const [key, value] of Object.entries(parseQRGridSpacing(exportForm.value.spacing)))
+      params.set(key, String(value));
+    url = `/api/batches/${batchId}/qr-pdf?${params}`;
   }
   else {
     const size = Math.min(15, Math.max(2, sizeCm));

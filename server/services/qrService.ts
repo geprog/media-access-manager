@@ -1,8 +1,10 @@
 import type { Archiver } from 'archiver';
+import type { QRGridSpacing } from '~/utils/qrGrid';
 import { ZipArchive } from 'archiver';
 import { PageSizes, PDFDocument, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
+import { computeQRGridCells, DEFAULT_QR_GRID_SPACING } from '~/utils/qrGrid';
 
 /** Points per cm (1 inch = 72 pt, 1 inch = 2.54 cm) */
 const CM_TO_POINTS = 72 / 2.54;
@@ -97,6 +99,8 @@ export type QRPdfLayout = 'one-per-page' | 'grid';
 export interface QRPdfGridOptions {
   cols: number
   rows: number
+  /** Margins and gaps in cm; defaults to {@link DEFAULT_QR_GRID_SPACING}. */
+  spacing?: QRGridSpacing
 }
 
 export interface QRPdfOptions {
@@ -113,8 +117,6 @@ export async function createQRPdf(
   const baseUrl = appUrl.replace(/\/$/, '');
   const pdfDoc = await PDFDocument.create();
   const [pageW, pageH] = PageSizes.A4;
-  const marginPt = cmToPoints(1.5);
-  const gapPt = cmToPoints(0.5);
   const showToken = options.showToken ?? false;
   const font = showToken ? await pdfDoc.embedFont(StandardFonts.Courier) : null;
   const tokenGapPt = cmToPoints(0.3);
@@ -156,13 +158,20 @@ export async function createQRPdf(
     if (!('grid' in options)) {
       throw createError({ statusCode: 400, statusMessage: 'Bad Request: Invalid options' });
     }
-    const { cols, rows } = options.grid;
-    const cellW = (pageW - 2 * marginPt - (cols - 1) * gapPt) / cols;
-    const cellH = (pageH - 2 * marginPt - (rows - 1) * gapPt) / rows;
+    const { cols, rows, spacing = DEFAULT_QR_GRID_SPACING } = options.grid;
+    const cells = computeQRGridCells(cols, rows, spacing);
+    if (!cells) {
+      throw createError({ statusCode: 400, statusMessage: 'Bad Request: Margins and gaps leave no room for the grid' });
+    }
+    const cellW = cmToPoints(cells[0]!.width);
+    const cellH = cmToPoints(cells[0]!.height);
     const tokenReservedPt = showToken ? tokenGapPt + fontSizeGrid + cmToPoints(0.15) : 0;
     const drawSizePt = Math.min(cellW, cellH - tokenReservedPt);
+    if (drawSizePt <= 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Bad Request: Grid cells are too small' });
+    }
     const sizePx = pointsToPixels(drawSizePt);
-    const itemsPerPage = cols * rows;
+    const itemsPerPage = cells.length;
 
     let page = pdfDoc.addPage(PageSizes.A4);
 
@@ -172,20 +181,20 @@ export async function createQRPdf(
       const item = tokens[i];
       if (!item)
         continue;
-      const idxOnPage = i % itemsPerPage;
-      const col = idxOnPage % cols;
-      const row = Math.floor(idxOnPage / cols);
+      const cell = cells[i % itemsPerPage]!;
+      // Cells are measured from the top of the page, PDF coordinates from the bottom.
+      const cellX = cmToPoints(cell.x);
+      const cellY = pageH - cmToPoints(cell.y + cell.height);
       const fullUrl = `${baseUrl}/${item.token}`;
       const pngBuf = await generateQRCode(fullUrl, sizePx);
       const pngImage = await pdfDoc.embedPng(pngBuf);
-      const offsetX = (cellW - drawSizePt) / 2;
-      const offsetY = (cellH - drawSizePt) / 2;
-      const x = marginPt + col * (cellW + gapPt) + offsetX;
-      const y = pageH - marginPt - (row + 1) * (cellH + gapPt) + offsetY;
+      // The QR code and the token below it are centered as one block.
+      const x = cellX + (cellW - drawSizePt) / 2;
+      const y = cellY + (cellH - drawSizePt + tokenReservedPt) / 2;
       page.drawImage(pngImage, { x, y, width: drawSizePt, height: drawSizePt });
       if (showToken && font) {
         const textW = font.widthOfTextAtSize(item.token, fontSizeGrid);
-        const cellCenterX = marginPt + col * (cellW + gapPt) + cellW / 2;
+        const cellCenterX = cellX + cellW / 2;
         const textX = cellCenterX - textW / 2;
         const textY = y - tokenGapPt - fontSizeGrid;
         page.drawText(item.token, {

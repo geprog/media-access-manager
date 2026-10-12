@@ -568,4 +568,75 @@ test.describe('Media and Tokens', () => {
     // Two QR codes at 5 cm and 300 dpi. An empty archive is a few hundred bytes.
     expect(archive.length).toBeGreaterThan(10_000);
   });
+
+  /**
+   * Sticker sheets state their margins and gaps, and the grid has to land on
+   * them, so the export dialog hands every figure to the PDF it opens.
+   */
+  test('exports a batch as a PDF grid laid onto a sticker sheet', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+
+    await page.getByRole('button', { name: new RegExp(batchName) }).click();
+    await page.getByRole('button', { name: 'Export QR Codes' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByText('PDF (grid on A4)').click();
+
+    await dialog.getByLabel('Columns per page').fill('3');
+    await dialog.getByLabel('Rows per page').fill('8');
+    await dialog.getByLabel('Top', { exact: true }).fill('0.45');
+    await dialog.getByLabel('Bottom', { exact: true }).fill('0.45');
+    await dialog.getByLabel('Left', { exact: true }).fill('0');
+    await dialog.getByLabel('Right', { exact: true }).fill('0');
+    await dialog.getByLabel('Horizontal', { exact: true }).fill('0');
+    await dialog.getByLabel('Vertical', { exact: true }).fill('0');
+    await expect(dialog.getByText('Resulting label size: 7 × 3.6 cm')).toBeVisible();
+
+    // Margins wider than the page leave nothing to print on.
+    await dialog.getByLabel('Left', { exact: true }).fill('10');
+    await dialog.getByLabel('Right', { exact: true }).fill('10');
+    await dialog.getByLabel('Horizontal', { exact: true }).fill('1');
+    await expect(dialog.getByText(/leave no room for the labels/)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Download' })).toBeDisabled();
+
+    await dialog.getByLabel('Left', { exact: true }).fill('0');
+    await dialog.getByLabel('Right', { exact: true }).fill('0');
+    await dialog.getByLabel('Horizontal', { exact: true }).fill('0');
+
+    // The PDF opens in a new tab, whose request carries the layout.
+    const request = page.context().waitForEvent('request', r => r.url().includes('/qr-pdf'));
+    await dialog.getByRole('button', { name: 'Download' }).click();
+    const url = new URL((await request).url());
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      layout: 'grid',
+      cols: '3',
+      rows: '8',
+      marginTop: '0.45',
+      marginBottom: '0.45',
+      marginLeft: '0',
+      marginRight: '0',
+      gapX: '0',
+      gapY: '0',
+    });
+
+    const pdf = await page.evaluate(async (path) => {
+      const response = await fetch(path);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return {
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        signature: String.fromCharCode(...bytes.slice(0, 4)),
+      };
+    }, `${url.pathname}${url.search}`);
+    expect(pdf.status).toBe(200);
+    expect(pdf.contentType).toBe('application/pdf');
+    expect(pdf.signature).toBe('%PDF');
+  });
 });
