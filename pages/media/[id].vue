@@ -43,7 +43,7 @@
             </li>
           </ul>
         </div>
-        <TokenBatchesPanel :media-id="id" />
+        <TokenBatchesPanel :media-id="id" :default-label="media.title ?? ''" />
       </div>
     </UCard>
   </div>

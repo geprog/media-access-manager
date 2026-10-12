@@ -610,6 +610,10 @@ test.describe('Media and Tokens', () => {
     await dialog.getByLabel('Right', { exact: true }).fill('0');
     await dialog.getByLabel('Horizontal', { exact: true }).fill('0');
 
+    // The label starts out as the media's title.
+    await dialog.getByLabel('Print label next to QR code').check();
+    await expect(dialog.getByLabel('Label', { exact: true })).toHaveValue(title);
+
     // The PDF opens in a new tab, whose request carries the layout.
     const request = page.context().waitForEvent('request', r => r.url().includes('/qr-pdf'));
     await dialog.getByRole('button', { name: 'Download' }).click();
@@ -624,7 +628,10 @@ test.describe('Media and Tokens', () => {
       marginRight: '0',
       gapX: '0',
       gapY: '0',
+      label: title,
     });
+    // The PDF fonts only cover Latin-1, so other characters must not break it.
+    url.searchParams.set('label', `${title} → 日本語 🎬`);
 
     const pdf = await page.evaluate(async (path) => {
       const response = await fetch(path);

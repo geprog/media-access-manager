@@ -1,10 +1,13 @@
 import type { Archiver } from 'archiver';
+import type { PDFFont, PDFPage } from 'pdf-lib';
+import type { FitLabelOptions, FittedLabel } from '../utils/pdfLabel';
 import type { QRGridSpacing } from '~/utils/qrGrid';
 import { ZipArchive } from 'archiver';
 import { PageSizes, PDFDocument, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING } from '~/utils/qrGrid';
+import { fitLabel } from '../utils/pdfLabel';
 
 /** Points per cm (1 inch = 72 pt, 1 inch = 2.54 cm) */
 const CM_TO_POINTS = 72 / 2.54;
@@ -105,6 +108,41 @@ export interface QRPdfGridOptions {
 
 export interface QRPdfOptions {
   showToken?: boolean
+  /** Text printed to the right of every QR code, e.g. the media title. */
+  label?: string
+}
+
+const LABEL_LINE_HEIGHT = 1.2;
+
+/**
+ * The label as the font can write it. The standard PDF fonts only cover
+ * Latin-1, and pdf-lib throws on anything else, so such characters become `?`.
+ */
+function encodableText(font: PDFFont, text: string): string {
+  const charset = new Set(font.getCharacterSet());
+  return [...text].map(char => charset.has(char.codePointAt(0)!) ? char : '?').join('');
+}
+
+function fitLabelToBox(font: PDFFont, text: string, width: number, height: number, options: FitLabelOptions): FittedLabel | null {
+  return fitLabel(text, width, height, (line, size) => font.widthOfTextAtSize(line, size), { ...options, lineHeight: LABEL_LINE_HEIGHT });
+}
+
+function labelWidth(font: PDFFont, label: FittedLabel): number {
+  return Math.max(...label.lines.map(line => font.widthOfTextAtSize(line, label.size)));
+}
+
+/** Draws the label left-aligned at `x`, its lines centered vertically on `centerY`. */
+function drawLabel(page: PDFPage, font: PDFFont, label: FittedLabel, x: number, centerY: number) {
+  const lineStep = label.size * LABEL_LINE_HEIGHT;
+  const top = centerY + (label.lines.length * lineStep) / 2;
+  label.lines.forEach((line, i) => {
+    page.drawText(line, {
+      x,
+      y: top - i * lineStep - lineStep / 2 - font.heightAtSize(label.size, { descender: false }) / 2,
+      font,
+      size: label.size,
+    });
+  });
 }
 
 export async function createQRPdf(
@@ -122,6 +160,10 @@ export async function createQRPdf(
   const tokenGapPt = cmToPoints(0.3);
   const fontSizeOne = 10;
   const fontSizeGrid = 6;
+  const labelText = options.label?.trim() ?? '';
+  const labelFont = labelText ? await pdfDoc.embedFont(StandardFonts.Helvetica) : null;
+  const label = labelFont ? encodableText(labelFont, labelText) : '';
+  const labelGapPt = cmToPoints(0.2);
 
   if (layout === 'one-per-page') {
     if (!('sizeCm' in options)) {
@@ -130,6 +172,12 @@ export async function createQRPdf(
     const sizeCm = options.sizeCm;
     const sizePx = cmToPixels(sizeCm);
     const sizePt = cmToPoints(sizeCm);
+    const pageMarginPt = cmToPoints(1.5);
+    const fitted = labelFont
+      ? fitLabelToBox(labelFont, label, pageW - 2 * pageMarginPt - sizePt - labelGapPt, sizePt, { maxSize: 24, minSize: 6 })
+      : null;
+    // The QR code and its label are centered on the page as one block.
+    const blockW = fitted && labelFont ? sizePt + labelGapPt + labelWidth(labelFont, fitted) : sizePt;
     for (let i = 0; i < tokens.length; i++) {
       const item = tokens[i];
       if (!item)
@@ -138,9 +186,11 @@ export async function createQRPdf(
       const pngBuf = await generateQRCode(fullUrl, sizePx);
       const pngImage = await pdfDoc.embedPng(pngBuf);
       const page = pdfDoc.addPage(PageSizes.A4);
-      const x = (pageW - sizePt) / 2;
+      const x = (pageW - blockW) / 2;
       const y = (pageH - sizePt) / 2;
       page.drawImage(pngImage, { x, y, width: sizePt, height: sizePt });
+      if (fitted && labelFont)
+        drawLabel(page, labelFont, fitted, x + sizePt + labelGapPt, y + sizePt / 2);
       if (showToken && font) {
         const textW = font.widthOfTextAtSize(item.token, fontSizeOne);
         const textX = x + (sizePt - textW) / 2;
@@ -166,10 +216,16 @@ export async function createQRPdf(
     const cellW = cmToPoints(cells[0]!.width);
     const cellH = cmToPoints(cells[0]!.height);
     const tokenReservedPt = showToken ? tokenGapPt + fontSizeGrid + cmToPoints(0.15) : 0;
-    const drawSizePt = Math.min(cellW, cellH - tokenReservedPt);
+    // A label takes the right part of the cell, so the QR code leaves it room.
+    const drawSizePt = Math.min(labelFont ? cellW * 0.55 : cellW, cellH - tokenReservedPt);
     if (drawSizePt <= 0) {
       throw createError({ statusCode: 400, statusMessage: 'Bad Request: Grid cells are too small' });
     }
+    // Same text in every cell, so it is fitted once. The QR code brings its own
+    // quiet zone, so only the far edges of the cell get padding.
+    const fitted = labelFont
+      ? fitLabelToBox(labelFont, label, cellW - drawSizePt - 2 * labelGapPt, cellH - 2 * labelGapPt, { maxSize: 12, minSize: 5 })
+      : null;
     const sizePx = pointsToPixels(drawSizePt);
     const itemsPerPage = cells.length;
 
@@ -188,14 +244,16 @@ export async function createQRPdf(
       const fullUrl = `${baseUrl}/${item.token}`;
       const pngBuf = await generateQRCode(fullUrl, sizePx);
       const pngImage = await pdfDoc.embedPng(pngBuf);
-      // The QR code and the token below it are centered as one block.
-      const x = cellX + (cellW - drawSizePt) / 2;
+      // The QR code and the token below it are centered as one block, or sit
+      // on the left when a label follows them.
+      const x = labelFont ? cellX : cellX + (cellW - drawSizePt) / 2;
       const y = cellY + (cellH - drawSizePt + tokenReservedPt) / 2;
       page.drawImage(pngImage, { x, y, width: drawSizePt, height: drawSizePt });
+      if (fitted && labelFont)
+        drawLabel(page, labelFont, fitted, x + drawSizePt + labelGapPt, cellY + cellH / 2);
       if (showToken && font) {
         const textW = font.widthOfTextAtSize(item.token, fontSizeGrid);
-        const cellCenterX = cellX + cellW / 2;
-        const textX = cellCenterX - textW / 2;
+        const textX = x + (drawSizePt - textW) / 2;
         const textY = y - tokenGapPt - fontSizeGrid;
         page.drawText(item.token, {
           x: textX,

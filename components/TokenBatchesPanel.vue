@@ -138,6 +138,20 @@
             :label="$t('qr_export_show_token')"
             :description="$t('qr_export_show_token_hint')"
           />
+          <template v-if="exportForm.format !== 'zip'">
+            <UCheckbox
+              v-model="exportForm.showLabel"
+              :label="$t('qr_export_show_label')"
+              :description="$t('qr_export_show_label_hint')"
+            />
+            <UFormField v-if="exportForm.showLabel" :label="$t('qr_export_label')">
+              <UInput
+                v-model="exportForm.label"
+                class="w-full"
+                maxlength="200"
+              />
+            </UFormField>
+          </template>
           <div class="flex justify-end gap-2">
             <UButton
               variant="outline"
@@ -226,6 +240,8 @@ const props = defineProps<{
   mediaId?: string
   /** Set for a group's tokens, whose limits are spent per media of the group. */
   groupId?: string
+  /** What the QR export prints next to each code unless the admin changes it. */
+  defaultLabel?: string
 }>();
 
 const { t } = useI18n();
@@ -278,6 +294,8 @@ function emptyExportForm() {
     gridRows: 4,
     spacing: { ...DEFAULT_QR_GRID_SPACING },
     showToken: false,
+    showLabel: false,
+    label: props.defaultLabel ?? '',
   };
 }
 
@@ -330,7 +348,8 @@ function handleExportDownload() {
   const batchId = exportBatchId.value;
   if (!batchId)
     return;
-  const { format, sizeCm, showToken } = exportForm.value;
+  const { format, sizeCm, showToken, showLabel } = exportForm.value;
+  const label = showLabel ? exportForm.value.label.trim() : '';
   let url: string;
   if (format === 'zip') {
     const size = Math.min(15, Math.max(2, sizeCm));
@@ -343,13 +362,22 @@ function handleExportDownload() {
       rows: String(gridRows()),
       showToken: String(showToken),
     });
+    if (label)
+      params.set('label', label);
     for (const [key, value] of Object.entries(parseQRGridSpacing(exportForm.value.spacing)))
       params.set(key, String(value));
     url = `/api/batches/${batchId}/qr-pdf?${params}`;
   }
   else {
     const size = Math.min(15, Math.max(2, sizeCm));
-    url = `/api/batches/${batchId}/qr-pdf?layout=one-per-page&sizeCm=${size}&showToken=${showToken}`;
+    const params = new URLSearchParams({
+      layout: 'one-per-page',
+      sizeCm: String(size),
+      showToken: String(showToken),
+    });
+    if (label)
+      params.set('label', label);
+    url = `/api/batches/${batchId}/qr-pdf?${params}`;
   }
   window.open(url, '_blank');
   showExportModal.value = false;

@@ -51,7 +51,7 @@
             </li>
           </ul>
         </div>
-        <TokenBatchesPanel :group-id="id" />
+        <TokenBatchesPanel :group-id="id" :default-label="data.group.name" />
       </div>
     </UCard>
 

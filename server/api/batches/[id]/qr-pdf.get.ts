@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   const rows = Math.min(8, Math.max(1, Math.floor(Number(query.rows) || 4)));
   const spacing = parseQRGridSpacing(query);
   const showToken = String(query.showToken).toLowerCase() === 'true' || query.showToken === '1';
+  const label = typeof query.label === 'string' ? query.label.trim().slice(0, 200) : '';
 
   if (layout !== 'one-per-page' && layout !== 'grid') {
     throw createError({ statusCode: 400, statusMessage: 'Invalid layout. Use one-per-page or grid.' });
@@ -32,8 +33,8 @@ export default defineEventHandler(async (event) => {
   const tokensWithName = tokenRows.map(t => ({ token: t.token, name: t.name }));
   const batchName = batch?.name ?? '';
   const options = layout === 'one-per-page'
-    ? { sizeCm, showToken }
-    : { grid: { cols, rows, spacing }, showToken };
+    ? { sizeCm, showToken, label }
+    : { grid: { cols, rows, spacing }, showToken, label };
   const pdf = await createQRPdf(tokensWithName, appUrl, batchName, layout, options);
 
   const layoutSuffix = layout === 'grid' ? '-grid' : '';
