@@ -144,13 +144,22 @@
               :label="$t('qr_export_show_label')"
               :description="$t('qr_export_show_label_hint')"
             />
-            <UFormField v-if="exportForm.showLabel" :label="$t('qr_export_label')">
-              <UInput
-                v-model="exportForm.label"
-                class="w-full"
-                maxlength="200"
-              />
-            </UFormField>
+            <template v-if="exportForm.showLabel">
+              <UFormField :label="$t('qr_export_label')">
+                <UInput
+                  v-model="exportForm.label"
+                  class="w-full"
+                  maxlength="200"
+                />
+              </UFormField>
+              <UFormField :label="$t('qr_export_label_position')">
+                <URadioGroup
+                  v-model="exportForm.labelPosition"
+                  :items="labelPositionOptions"
+                  orientation="horizontal"
+                />
+              </UFormField>
+            </template>
           </template>
           <div class="flex justify-end gap-2">
             <UButton
@@ -229,10 +238,10 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
 import type { ValidityUnit } from '~/utils/accessWindow';
-import type { QRGridSpacing } from '~/utils/qrGrid';
+import type { LabelPosition, QRGridSpacing } from '~/utils/qrGrid';
 import type { TokenRow } from '~/utils/tokens';
 import { h, resolveComponent } from 'vue';
-import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
+import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
 import { groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
@@ -296,6 +305,7 @@ function emptyExportForm() {
     showToken: false,
     showLabel: false,
     label: props.defaultLabel ?? '',
+    labelPosition: 'right' as LabelPosition,
   };
 }
 
@@ -332,6 +342,11 @@ const gridCellSize = computed(() => {
   return { width: format(cell.width), height: format(cell.height) };
 });
 
+const labelPositionOptions = computed(() => LABEL_POSITIONS.map(position => ({
+  label: t(`qr_export_label_position_${position}`),
+  value: position,
+})));
+
 const exportFormatOptions = computed(() => [
   { label: t('qr_export_format_zip'), value: 'zip' },
   { label: t('qr_export_format_pdf_one'), value: 'pdf-one' },
@@ -348,7 +363,7 @@ function handleExportDownload() {
   const batchId = exportBatchId.value;
   if (!batchId)
     return;
-  const { format, sizeCm, showToken, showLabel } = exportForm.value;
+  const { format, sizeCm, showToken, showLabel, labelPosition } = exportForm.value;
   const label = showLabel ? exportForm.value.label.trim() : '';
   let url: string;
   if (format === 'zip') {
@@ -362,8 +377,10 @@ function handleExportDownload() {
       rows: String(gridRows()),
       showToken: String(showToken),
     });
-    if (label)
+    if (label) {
       params.set('label', label);
+      params.set('labelPosition', labelPosition);
+    }
     for (const [key, value] of Object.entries(parseQRGridSpacing(exportForm.value.spacing)))
       params.set(key, String(value));
     url = `/api/batches/${batchId}/qr-pdf?${params}`;
@@ -375,8 +392,10 @@ function handleExportDownload() {
       sizeCm: String(size),
       showToken: String(showToken),
     });
-    if (label)
+    if (label) {
       params.set('label', label);
+      params.set('labelPosition', labelPosition);
+    }
     url = `/api/batches/${batchId}/qr-pdf?${params}`;
   }
   window.open(url, '_blank');

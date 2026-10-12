@@ -54,7 +54,7 @@ export function fitLabel(
   measure: MeasureText,
   { maxSize = 12, minSize = 5, lineHeight = 1.2 }: FitLabelOptions = {},
 ): FittedLabel | null {
-  if (!text.trim())
+  if (!text.trim() || maxWidth <= 0 || maxHeight <= 0)
     return null;
   const words = text.split(/\s+/).filter(Boolean);
   // Shrinking far enough to keep whole words beats breaking one apart.

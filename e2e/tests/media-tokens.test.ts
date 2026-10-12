@@ -613,6 +613,7 @@ test.describe('Media and Tokens', () => {
     // The label starts out as the media's title.
     await dialog.getByLabel('Print label next to QR code').check();
     await expect(dialog.getByLabel('Label', { exact: true })).toHaveValue(title);
+    await dialog.getByLabel('Below', { exact: true }).check();
 
     // The PDF opens in a new tab, whose request carries the layout.
     const request = page.context().waitForEvent('request', r => r.url().includes('/qr-pdf'));
@@ -629,6 +630,7 @@ test.describe('Media and Tokens', () => {
       gapX: '0',
       gapY: '0',
       label: title,
+      labelPosition: 'bottom',
     });
     // The PDF fonts only cover Latin-1, so other characters must not break it.
     url.searchParams.set('label', `${title} → 日本語 🎬`);

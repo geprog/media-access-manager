@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from './qrGrid';
+import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, parseLabelPosition, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from './qrGrid';
 
 const noSpacing = { marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gapX: 0, gapY: 0 };
 
@@ -32,6 +32,18 @@ describe('qrGrid', () => {
       const spacing = parseQRGridSpacing({ marginTop: '-1', gapY: '99' });
       expect(spacing.marginTop).toBe(0);
       expect(spacing.gapY).toBe(QR_GRID_SPACING_MAX_CM);
+    });
+  });
+
+  describe('parseLabelPosition', () => {
+    it('accepts every position', () => {
+      for (const position of ['top', 'right', 'bottom', 'left'])
+        expect(parseLabelPosition(position)).toBe(position);
+    });
+
+    it('falls back to the right for anything else', () => {
+      expect(parseLabelPosition(undefined)).toBe('right');
+      expect(parseLabelPosition('middle')).toBe('right');
     });
   });
 

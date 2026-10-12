@@ -59,6 +59,11 @@ describe('pdfLabel', () => {
       expect(fitLabel('Course', 60, 4, measure, { maxSize: 10, minSize: 5, lineHeight: 1 })).toBeNull();
     });
 
+    it('returns null when the box has no room at all', () => {
+      expect(fitLabel('Course', 0, 100, measure)).toBeNull();
+      expect(fitLabel('Course', 100, -1, measure)).toBeNull();
+    });
+
     it('returns null for blank text', () => {
       expect(fitLabel('  ', 60, 20, measure)).toBeNull();
     });

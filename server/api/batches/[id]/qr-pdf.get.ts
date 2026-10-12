@@ -1,5 +1,5 @@
 import type { QRPdfLayout } from '../../../services/qrService';
-import { parseQRGridSpacing } from '~/utils/qrGrid';
+import { parseLabelPosition, parseQRGridSpacing } from '~/utils/qrGrid';
 import { createQRPdf } from '../../../services/qrService';
 import { findBatchById, listTokensByBatchId } from '../../../services/tokenService';
 
@@ -16,6 +16,7 @@ export default defineEventHandler(async (event) => {
   const spacing = parseQRGridSpacing(query);
   const showToken = String(query.showToken).toLowerCase() === 'true' || query.showToken === '1';
   const label = typeof query.label === 'string' ? query.label.trim().slice(0, 200) : '';
+  const labelPosition = parseLabelPosition(query.labelPosition);
 
   if (layout !== 'one-per-page' && layout !== 'grid') {
     throw createError({ statusCode: 400, statusMessage: 'Invalid layout. Use one-per-page or grid.' });
@@ -33,8 +34,8 @@ export default defineEventHandler(async (event) => {
   const tokensWithName = tokenRows.map(t => ({ token: t.token, name: t.name }));
   const batchName = batch?.name ?? '';
   const options = layout === 'one-per-page'
-    ? { sizeCm, showToken, label }
-    : { grid: { cols, rows, spacing }, showToken, label };
+    ? { sizeCm, showToken, label, labelPosition }
+    : { grid: { cols, rows, spacing }, showToken, label, labelPosition };
   const pdf = await createQRPdf(tokensWithName, appUrl, batchName, layout, options);
 
   const layoutSuffix = layout === 'grid' ? '-grid' : '';

@@ -45,6 +45,16 @@ export function parseQRGridSpacing(query: Partial<Record<keyof QRGridSpacing, un
   return spacing;
 }
 
+/** Sides of the QR code a printed label can go on. */
+export const LABEL_POSITIONS = ['top', 'right', 'bottom', 'left'] as const;
+
+export type LabelPosition = typeof LABEL_POSITIONS[number];
+
+/** A label position from a query parameter; the right side unless another is named. */
+export function parseLabelPosition(value: unknown): LabelPosition {
+  return LABEL_POSITIONS.includes(value as LabelPosition) ? value as LabelPosition : 'right';
+}
+
 /** One grid cell in cm, measured from the top left corner of the page. */
 export interface QRGridCell {
   x: number
