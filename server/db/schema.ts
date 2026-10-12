@@ -1,3 +1,4 @@
+import type { ValidityDuration } from '../../utils/accessWindow';
 import { sql } from 'drizzle-orm';
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
@@ -58,7 +59,16 @@ export const tokens = sqliteTable('tokens', {
   batchId: text('batch_id').references(() => batches.id),
   name: text('name').notNull(),
   startsAt: integer('starts_at', { mode: 'timestamp' }),
+  /**
+   * Stays `null` on a token waiting for its first use until that use sets it
+   * from `validFor`.
+   */
   expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  /**
+   * How long the token lasts from its first use, set only on a token whose
+   * validity starts then instead of on creation.
+   */
+  validFor: text('valid_for', { mode: 'json' }).$type<ValidityDuration>(),
   /**
    * On a group token this is the limit for *each* media of the group, not for
    * the token as a whole.

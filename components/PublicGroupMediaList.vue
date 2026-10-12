@@ -66,6 +66,7 @@
 </template>
 
 <script setup lang="ts">
+import type { ValidityDuration } from '~/utils/accessWindow';
 import { getRemainingViews } from '~/utils/accessWindow';
 import { buildMailtoLink } from '~/utils/mailto';
 
@@ -83,6 +84,8 @@ const props = defineProps<{
   /** The group's name, which is all the visitor knows it by. */
   title: string
   expiresAt?: string | null
+  /** How long the token lasts from the first media watched, if not started yet. */
+  validFor?: ValidityDuration | null
   media: GroupMediaEntry[]
 }>();
 
@@ -90,7 +93,11 @@ const { t } = useI18n();
 
 const expiresAtDate = computed(() => (props.expiresAt ? new Date(props.expiresAt) : null));
 // A group token's date window is shared, so a single label covers the list.
-const expiryLabel = useExpiryLabel(expiresAtDate, () => props.media.some(entry => entry.usageLimit != null));
+const expiryLabel = useExpiryLabel(
+  expiresAtDate,
+  () => props.media.some(entry => entry.usageLimit != null),
+  () => props.validFor ?? null,
+);
 
 const hasBlockedMedia = computed(() => props.media.some(entry => entry.blockedBy));
 

@@ -1,3 +1,5 @@
+import type { ValidityDuration } from './accessWindow';
+
 /** A token as the media details page lists it. */
 export interface TokenRow {
   token: string
@@ -5,6 +7,8 @@ export interface TokenRow {
   usageCount: number
   usageLimit: number | null
   expiresAt: string | null
+  /** Set while a token waits for the first use that starts its validity. */
+  validFor: ValidityDuration | null
   batchId: string | null
 }
 
