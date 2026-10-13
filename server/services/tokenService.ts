@@ -3,7 +3,7 @@ import type { GroupMediaAccess } from '../utils/groupAccess';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
 import type { TokenValidity, ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, sql } from 'drizzle-orm';
 import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
@@ -306,9 +306,28 @@ export async function listTokensByMediaId(mediaId: string) {
   return db.select().from(tokens).where(eq(tokens.mediaId, mediaId));
 }
 
+/**
+ * A group's tokens, each with the most views it spent on any one media of the
+ * group: the per-media limit is measured against that, not the total.
+ */
 export async function listTokensByGroupId(groupId: string) {
   const db = useDb();
-  return db.select().from(tokens).where(eq(tokens.groupId, groupId));
+  const usage = db
+    .select({
+      tokenId: tokenMediaUsage.tokenId,
+      maxUsageCount: sql<number>`max(${tokenMediaUsage.usageCount})`.as('max_usage_count'),
+    })
+    .from(tokenMediaUsage)
+    .groupBy(tokenMediaUsage.tokenId)
+    .as('usage');
+  return db
+    .select({
+      ...getTableColumns(tokens),
+      maxMediaUsageCount: sql<number>`coalesce(${usage.maxUsageCount}, 0)`,
+    })
+    .from(tokens)
+    .leftJoin(usage, eq(usage.tokenId, tokens.id))
+    .where(eq(tokens.groupId, groupId));
 }
 
 export async function listTokensByBatchId(batchId: string) {

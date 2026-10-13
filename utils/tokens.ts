@@ -12,6 +12,11 @@ export interface TokenRow {
   validFor: ValidityDuration | null
   /** When the token was first opened, `null` until then. */
   firstUsedAt: string | null
+  /**
+   * On a group token, the most views spent on any one media of the group —
+   * what its per-media limit is actually measured against.
+   */
+  maxMediaUsageCount?: number
   batchId: string | null
 }
 
@@ -100,4 +105,20 @@ export function getValidityConflicts(
     }
   }
   return conflicts;
+}
+
+/**
+ * Counts the tokens a new usage limit would use up at once, leaving out those
+ * already used up under the old one. For a group token that means losing
+ * access to at least one media of the group.
+ */
+export function getUsageLimitConflicts(tokens: TokenRow[], usageLimit: number | null): number {
+  if (usageLimit == null) {
+    return 0;
+  }
+  return tokens.filter((token) => {
+    const used = token.maxMediaUsageCount ?? token.usageCount;
+    const wasUsedUp = token.usageLimit != null && used >= token.usageLimit;
+    return used >= usageLimit && !wasUsedUp;
+  }).length;
 }

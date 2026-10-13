@@ -87,6 +87,8 @@
   "batch_edit_conflict_title": "Diese Änderung betrifft bereits ausgegebene Tokens",
   "batch_edit_conflict_closed": "{count} jetzt gültiges Token würde sofort ablaufen. | {count} jetzt gültige Tokens würden sofort ablaufen.",
   "batch_edit_conflict_replaced": "{count} seit seiner ersten Nutzung laufendes Token würde sein eigenes Ablaufdatum verlieren. | {count} seit ihrer ersten Nutzung laufende Tokens würden ihr eigenes Ablaufdatum verlieren.",
+  "batch_edit_conflict_used_up": "{count} Token hat das neue Limit bereits erreicht und würde nicht mehr funktionieren. | {count} Tokens haben das neue Limit bereits erreicht und würden nicht mehr funktionieren.",
+  "batch_edit_conflict_used_up_group": "{count} Token hat das neue Limit bei einigen Medien bereits erreicht und würde den Zugriff darauf verlieren. | {count} Tokens haben das neue Limit bei einigen Medien bereits erreicht und würden den Zugriff darauf verlieren.",
   "batch_edit_hint": "Änderungen gelten für alle Tokens dieses Batches. Bereits genutzte Aufrufe bleiben erhalten.",
   "batch_edit_first_use_hint": "Bereits geöffnete Tokens zählen die neue Dauer ab ihrer ersten Nutzung.",
   "token_usage_limit": "Nutzungslimit (optional)",

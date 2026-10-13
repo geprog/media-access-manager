@@ -130,9 +130,11 @@ A new first-use duration is counted from each token's `first_used_at` (set on
 any token's first view), so tokens already running are extended or shortened
 rather than restarted; tokens not yet opened keep waiting. A fixed expiry date
 replaces the expiry of every token alike.
-Before saving a validity that would expire tokens still valid right now, or
-overwrite the expiry of tokens already running since their first use, the
-dialog lists how many are affected and asks the admin to confirm.
+Before saving a change that would expire tokens still valid right now,
+overwrite the expiry of tokens already running since their first use, or lower
+the usage limit to or below what tokens have already used (for a group token:
+on any one of its media), the dialog lists how many are affected and asks the
+admin to confirm.
 
 **Schema** (simplified):
 

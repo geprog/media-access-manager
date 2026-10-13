@@ -237,7 +237,7 @@
               </div>
             </UFormField>
             <UAlert
-              v-if="validityConflicts"
+              v-if="editConflicts"
               class="mt-4"
               color="warning"
               variant="subtle"
@@ -246,11 +246,14 @@
             >
               <template #description>
                 <ul class="list-disc ps-4">
-                  <li v-if="validityConflicts.closed">
-                    {{ $t('batch_edit_conflict_closed', { count: validityConflicts.closed }, validityConflicts.closed) }}
+                  <li v-if="editConflicts.closed">
+                    {{ $t('batch_edit_conflict_closed', { count: editConflicts.closed }, editConflicts.closed) }}
                   </li>
-                  <li v-if="validityConflicts.replaced">
-                    {{ $t('batch_edit_conflict_replaced', { count: validityConflicts.replaced }, validityConflicts.replaced) }}
+                  <li v-if="editConflicts.replaced">
+                    {{ $t('batch_edit_conflict_replaced', { count: editConflicts.replaced }, editConflicts.replaced) }}
+                  </li>
+                  <li v-if="editConflicts.usedUp">
+                    {{ $t(groupId ? 'batch_edit_conflict_used_up_group' : 'batch_edit_conflict_used_up', { count: editConflicts.usedUp }, editConflicts.usedUp) }}
                   </li>
                 </ul>
               </template>
@@ -258,9 +261,9 @@
             <UButton
               type="submit"
               class="mt-4"
-              :color="validityConflicts ? 'warning' : 'primary'"
+              :color="editConflicts ? 'warning' : 'primary'"
             >
-              {{ validityConflicts ? $t('batch_save_anyway') : editingBatchId ? $t('batch_save') : $t('create_new_tokens') }}
+              {{ editConflicts ? $t('batch_save_anyway') : editingBatchId ? $t('batch_save') : $t('create_new_tokens') }}
             </UButton>
           </form>
         </UCard>
@@ -277,7 +280,7 @@ import type { TokenRow, ValidityConflicts } from '~/utils/tokens';
 import { format } from 'date-fns';
 import { h, resolveComponent } from 'vue';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
-import { getBatchSettings, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
+import { getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
   /** Set for a single media's tokens; mutually exclusive with `groupId`. */
@@ -322,15 +325,21 @@ const batchForm = ref(emptyBatchForm());
 const editingBatchId = ref<string | null>(null);
 /** The form as it was opened for editing, so only what the admin changed is sent. */
 let initialEditForm: BatchForm | null = null;
+/** What an edit would do to tokens already handed out that the admin may not expect. */
+interface BatchEditConflicts extends ValidityConflicts {
+  /** Tokens the new usage limit would use up at once (for a group: on some media). */
+  usedUp: number
+}
+
 /**
- * Set once a save was held back because the new validity would close tokens
- * or overwrite running ones; saving again while it is shown confirms it.
+ * Set once a save was held back because it would expire, overwrite or use up
+ * tokens already handed out; saving again while it is shown confirms it.
  */
-const validityConflicts = ref<ValidityConflicts | null>(null);
+const editConflicts = ref<BatchEditConflicts | null>(null);
 
 // The warning was about the form as it was; any edit has to be checked anew.
 watch(batchForm, () => {
-  validityConflicts.value = null;
+  editConflicts.value = null;
 }, { deep: true });
 
 function openCreateModal() {
@@ -364,7 +373,7 @@ function openEditModal(batchId: string) {
   }
   initialEditForm = structuredClone(form);
   batchForm.value = form;
-  validityConflicts.value = null;
+  editConflicts.value = null;
   editingBatchId.value = batchId;
   showBatchModal.value = true;
 }
@@ -642,8 +651,8 @@ async function handleCreateBatch() {
 /**
  * Sends only what differs from the opened form: re-sending an untouched
  * validity would needlessly rewrite the expiry of every token of the batch.
- * A new validity that would close tokens or overwrite running ones is held
- * back until the admin saves a second time to confirm it.
+ * A change that would expire, overwrite or use up tokens already handed out
+ * is held back until the admin saves a second time to confirm it.
  */
 async function handleUpdateBatch(batchId: string) {
   const form = batchForm.value;
@@ -653,20 +662,23 @@ async function handleUpdateBatch(batchId: string) {
   if (!form.name.trim() || !validity || !initial)
     return;
   const body: Record<string, unknown> = {};
+  const conflicts: BatchEditConflicts = { closed: 0, replaced: 0, usedUp: 0 };
   if (form.name.trim() !== initial.name)
     body.name = form.name.trim();
-  if (usageLimitOf(form) !== usageLimitOf(initial))
-    body.usageLimit = usageLimitOf(form);
+  const usageLimit = usageLimitOf(form);
+  if (usageLimit !== usageLimitOf(initial)) {
+    body.usageLimit = usageLimit;
+    conflicts.usedUp = getUsageLimitConflicts(batchTokens(batchId), usageLimit);
+  }
   const newValidity = validityBody(validity);
   if (JSON.stringify(newValidity) !== JSON.stringify(initialValidity && validityBody(initialValidity))) {
-    if (!validityConflicts.value) {
-      const conflicts = getValidityConflicts(batchTokens(batchId), validity);
-      if (conflicts.closed > 0 || conflicts.replaced > 0) {
-        validityConflicts.value = conflicts;
-        return;
-      }
-    }
     Object.assign(body, newValidity);
+    Object.assign(conflicts, getValidityConflicts(batchTokens(batchId), validity));
+  }
+  const hasConflicts = conflicts.closed > 0 || conflicts.replaced > 0 || conflicts.usedUp > 0;
+  if (hasConflicts && !editConflicts.value) {
+    editConflicts.value = conflicts;
+    return;
   }
   if (Object.keys(body).length > 0) {
     await $fetch(`/api/batches/${batchId}`, {
@@ -676,7 +688,7 @@ async function handleUpdateBatch(batchId: string) {
   }
   showBatchModal.value = false;
   editingBatchId.value = null;
-  validityConflicts.value = null;
+  editConflicts.value = null;
   await Promise.all([refreshBatches(), refreshTokens()]);
 }
 </script>

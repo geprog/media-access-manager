@@ -1,6 +1,6 @@
 import type { TokenRow } from './tokens';
 import { describe, expect, it } from 'vitest';
-import { getBatchSettings, getValidityConflicts, groupMatchingTokensByBatch } from './tokens';
+import { getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from './tokens';
 
 function token(value: string, batchId: string | null) {
   return { token: value, batchId };
@@ -125,5 +125,34 @@ describe('getValidityConflicts', () => {
       .toEqual({ closed: 0, replaced: 1 });
     expect(getValidityConflicts([waiting, running], { expiresAt: null, validFor: null }, now))
       .toEqual({ closed: 0, replaced: 1 });
+  });
+});
+
+describe('getUsageLimitConflicts', () => {
+  it('counts tokens a lower limit would use up at once', () => {
+    const tokens = [row({ usageLimit: 5, usageCount: 3 }), row({ usageLimit: 5, usageCount: 1 })];
+    expect(getUsageLimitConflicts(tokens, 2)).toBe(1);
+  });
+
+  it('counts a token used exactly as often as the new limit allows', () => {
+    expect(getUsageLimitConflicts([row({ usageLimit: null, usageCount: 2 })], 2)).toBe(1);
+  });
+
+  it('does not count tokens already used up before', () => {
+    expect(getUsageLimitConflicts([row({ usageLimit: 2, usageCount: 2 })], 1)).toBe(0);
+  });
+
+  it('finds nothing when the limit is lifted', () => {
+    expect(getUsageLimitConflicts([row({ usageLimit: 2, usageCount: 1 })], null)).toBe(0);
+  });
+
+  // A group token's limit applies to each media alone, so its total says
+  // nothing; what counts is the media it was watched most.
+  it('reads a group token by the media it watched most', () => {
+    const tokens = [
+      row({ usageLimit: 5, usageCount: 6, maxMediaUsageCount: 2 }),
+      row({ usageLimit: 5, usageCount: 4, maxMediaUsageCount: 4 }),
+    ];
+    expect(getUsageLimitConflicts(tokens, 3)).toBe(1);
   });
 });
