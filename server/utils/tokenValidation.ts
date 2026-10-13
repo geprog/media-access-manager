@@ -58,3 +58,30 @@ export function getActivationExpiry(
   }
   return addValidity(now, tokenRow.validFor);
 }
+
+/**
+ * A token's validity as an admin sets it: a fixed expiry date (or none), or a
+ * duration counted from first use — never both.
+ */
+export type TokenValidity
+  = | { expiresAt: Date | null, validFor: null }
+    | { expiresAt: null, validFor: ValidityDuration };
+
+/**
+ * The window a token gets when an admin changes its validity afterwards. A new
+ * first-use duration counts from the view that already started the token, so
+ * stretching "two weeks" to "four" extends a running token rather than
+ * restarting it; a token nobody has opened yet simply keeps waiting.
+ */
+export function getEditedValidity(
+  tokenRow: { firstUsedAt: Date | null },
+  validity: TokenValidity,
+): { expiresAt: Date | null, validFor: ValidityDuration | null } {
+  if (!validity.validFor) {
+    return validity;
+  }
+  return {
+    expiresAt: tokenRow.firstUsedAt ? addValidity(tokenRow.firstUsedAt, validity.validFor) : null,
+    validFor: validity.validFor,
+  };
+}

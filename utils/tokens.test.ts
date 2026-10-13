@@ -1,5 +1,6 @@
+import type { TokenRow } from './tokens';
 import { describe, expect, it } from 'vitest';
-import { groupMatchingTokensByBatch } from './tokens';
+import { getBatchSettings, groupMatchingTokensByBatch } from './tokens';
 
 function token(value: string, batchId: string | null) {
   return { token: value, batchId };
@@ -53,5 +54,38 @@ describe('groupMatchingTokensByBatch', () => {
     const grouped = groupMatchingTokensByBatch([token('abc', 'batch-1')], '   ');
 
     expect(grouped.get('batch-1')).toEqual([token('abc', 'batch-1')]);
+  });
+});
+
+describe('getBatchSettings', () => {
+  function row(overrides: Partial<TokenRow>): TokenRow {
+    return {
+      token: 'abc',
+      name: '1',
+      usageCount: 0,
+      usageLimit: null,
+      expiresAt: null,
+      validFor: null,
+      batchId: 'batch-1',
+      ...overrides,
+    };
+  }
+
+  it('reads a fixed expiry date and the usage limit off the batch', () => {
+    const expiresAt = '2027-06-01T10:00:00.000Z';
+    expect(getBatchSettings([row({ usageLimit: 3, expiresAt }), row({ usageLimit: 3, expiresAt })]))
+      .toEqual({ usageLimit: 3, expiresAt, validFor: null });
+  });
+
+  it('reports the first-use duration rather than the expiry of a token already opened', () => {
+    const tokens = [
+      row({ validFor: { days: 7 }, expiresAt: '2027-01-07T10:00:00.000Z' }),
+      row({ validFor: { days: 7 } }),
+    ];
+    expect(getBatchSettings(tokens)).toEqual({ usageLimit: null, expiresAt: null, validFor: { days: 7 } });
+  });
+
+  it('has nothing to report for a batch without tokens', () => {
+    expect(getBatchSettings([])).toEqual({ usageLimit: null, expiresAt: null, validFor: null });
   });
 });

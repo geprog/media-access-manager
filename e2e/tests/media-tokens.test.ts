@@ -195,6 +195,41 @@ test.describe('Media and Tokens', () => {
     await expect(page.getByRole('button').filter({ hasText: otherBatch })).toBeVisible();
   });
 
+  test('edits the name and settings of a batch', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 2 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    const dialog = page.getByRole('dialog');
+    // The dialog opens on what the batch has now.
+    await expect(dialog.getByLabel('Batch name')).toHaveValue(batchName);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('2');
+
+    const renamed = `${batchName} renamed`;
+    await dialog.getByLabel('Batch name').fill(renamed);
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    const batchButton = page.getByRole('button').filter({ hasText: renamed });
+    await expect(batchButton).toBeVisible();
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row).toContainText('0 / 5');
+      await expect(row).toContainText('14 days after first use');
+    }
+  });
+
   test('use token to see media', async ({ page }, testInfo) => {
     await login(page);
 

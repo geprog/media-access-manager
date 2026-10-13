@@ -1,13 +1,13 @@
 import type { Media, MediaGroup, Token } from '../db/schema';
 import type { GroupMediaAccess } from '../utils/groupAccess';
-import type { TokenInvalidReason } from '../utils/tokenValidation';
+import type { TokenInvalidReason, TokenValidity } from '../utils/tokenValidation';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
-import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
+import { getActivationExpiry, getEditedValidity, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
 
 export { getGroupWindowReason, isTokenValid };
@@ -25,15 +25,21 @@ function targetColumns(target: TokenTarget) {
 }
 
 /**
- * Opens the date window of a token whose validity starts on first use. The
- * expiry is only filled in while still empty, so of two first views arriving
- * at once the earlier one sets it and the later one leaves it be.
+ * Records a token's first view and, on a token whose validity starts then,
+ * opens its date window. Both are only filled in while still empty, so of two
+ * first views arriving at once the earlier one sets them and the later one
+ * leaves them be.
  */
 function activationColumns(tokenRow: Token, now: Date = new Date()) {
   const expiresAt = getActivationExpiry(tokenRow, now);
-  return expiresAt
-    ? { expiresAt: sql`coalesce(${tokens.expiresAt}, ${Math.floor(expiresAt.getTime() / 1000)})` }
-    : {};
+  return {
+    firstUsedAt: sql`coalesce(${tokens.firstUsedAt}, ${toUnixSeconds(now)})`,
+    ...(expiresAt ? { expiresAt: sql`coalesce(${tokens.expiresAt}, ${toUnixSeconds(expiresAt)})` } : {}),
+  };
+}
+
+function toUnixSeconds(date: Date) {
+  return Math.floor(date.getTime() / 1000);
 }
 
 function generateTokenString(): string {
@@ -323,4 +329,46 @@ export async function listBatchesByMediaId(mediaId: string) {
 export async function listBatchesByGroupId(groupId: string) {
   const db = useDb();
   return db.select().from(batches).where(eq(batches.groupId, groupId));
+}
+
+export interface BatchChanges {
+  name?: string
+  /** `null` lifts the limit. */
+  usageLimit?: number | null
+  validity?: TokenValidity
+}
+
+/**
+ * Renames a batch and changes the settings its tokens share. Views already
+ * spent are kept, so a lowered limit can leave tokens used up at once. `null`
+ * when there is no such batch.
+ */
+export async function updateBatch(batchId: string, changes: BatchChanges) {
+  const db = useDb();
+  return db.transaction((tx) => {
+    const batch = tx.select().from(batches).where(eq(batches.id, batchId)).get();
+    if (!batch) {
+      return null;
+    }
+    if (changes.name !== undefined) {
+      tx.update(batches).set({ name: changes.name }).where(eq(batches.id, batchId)).run();
+    }
+    if (changes.usageLimit !== undefined) {
+      tx.update(tokens).set({ usageLimit: changes.usageLimit }).where(eq(tokens.batchId, batchId)).run();
+    }
+    const validity = changes.validity;
+    if (validity) {
+      if (validity.validFor) {
+        // Each token already opened counts the duration from its own first view.
+        const batchTokens = tx.select().from(tokens).where(eq(tokens.batchId, batchId)).all();
+        for (const tokenRow of batchTokens) {
+          tx.update(tokens).set(getEditedValidity(tokenRow, validity)).where(eq(tokens.id, tokenRow.id)).run();
+        }
+      }
+      else {
+        tx.update(tokens).set(validity).where(eq(tokens.batchId, batchId)).run();
+      }
+    }
+    return tx.select().from(batches).where(eq(batches.id, batchId)).get() ?? null;
+  });
 }

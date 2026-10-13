@@ -8,7 +8,7 @@
         <UButton
           :label="$t('create_new_tokens')"
           variant="outline"
-          @click="showBatchModal = true"
+          @click="openCreateModal"
         />
         <UInput
           v-if="hasBatches"
@@ -27,7 +27,14 @@
       >
         <template #content="{ item }">
           <div class="space-y-3 pb-3">
-            <div class="flex justify-end">
+            <div class="flex justify-end gap-2">
+              <UButton
+                :label="$t('batch_edit')"
+                size="sm"
+                variant="outline"
+                icon="i-heroicons-pencil-square"
+                @click="openEditModal(item.value)"
+              />
               <UButton
                 :label="$t('qr_export')"
                 size="sm"
@@ -180,13 +187,16 @@
       <template #content>
         <UCard>
           <template #header>
-            {{ $t('create_new_tokens') }}
+            {{ editingBatchId ? $t('batch_edit') : $t('create_new_tokens') }}
           </template>
-          <form @submit.prevent="handleCreateBatch">
+          <form @submit.prevent="handleSubmitBatch">
+            <p v-if="editingBatchId" class="mb-4 text-sm text-muted">
+              {{ $t('batch_edit_hint') }}
+            </p>
             <UFormField :label="$t('batch_name')">
               <UInput v-model="batchForm.name" :placeholder="$t('batch_name_placeholder')" required />
             </UFormField>
-            <UFormField :label="$t('batch_count')">
+            <UFormField v-if="!editingBatchId" :label="$t('batch_count')">
               <UInput v-model.number="batchForm.count" type="number" min="1" max="500" :placeholder="$t('batch_count_placeholder')" />
             </UFormField>
             <UFormField
@@ -208,6 +218,7 @@
               v-else
               :label="$t('token_valid_for')"
               :hint="$t('token_valid_for_hint')"
+              :help="editingBatchId ? $t('batch_edit_first_use_hint') : undefined"
             >
               <div class="flex gap-2">
                 <UInput
@@ -226,7 +237,7 @@
               </div>
             </UFormField>
             <UButton type="submit" class="mt-4">
-              {{ $t('create_new_tokens') }}
+              {{ editingBatchId ? $t('batch_save') : $t('create_new_tokens') }}
             </UButton>
           </form>
         </UCard>
@@ -237,12 +248,13 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
-import type { ValidityUnit } from '~/utils/accessWindow';
+import type { ValidityDuration, ValidityUnit } from '~/utils/accessWindow';
 import type { LabelPosition, QRGridSpacing } from '~/utils/qrGrid';
 import type { TokenRow } from '~/utils/tokens';
+import { format } from 'date-fns';
 import { h, resolveComponent } from 'vue';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
-import { groupMatchingTokensByBatch } from '~/utils/tokens';
+import { getBatchSettings, groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
   /** Set for a single media's tokens; mutually exclusive with `groupId`. */
@@ -280,7 +292,62 @@ function emptyBatchForm() {
   };
 }
 
+type BatchForm = ReturnType<typeof emptyBatchForm>;
+
 const batchForm = ref(emptyBatchForm());
+/** The batch the dialog edits, `null` while it creates a new one. */
+const editingBatchId = ref<string | null>(null);
+/** The form as it was opened for editing, so only what the admin changed is sent. */
+let initialEditForm: BatchForm | null = null;
+
+function openCreateModal() {
+  editingBatchId.value = null;
+  batchForm.value = emptyBatchForm();
+  showBatchModal.value = true;
+}
+
+function openEditModal(batchId: string) {
+  const batch = batches.value?.find(b => b.id === batchId);
+  if (!batch)
+    return;
+  const settings = getBatchSettings((tokens.value ?? []).filter(row => row.batchId === batchId));
+  const form: BatchForm = {
+    ...emptyBatchForm(),
+    name: batch.name,
+    usageLimit: settings.usageLimit,
+    validityStart: settings.validFor ? 'first_use' : 'immediately',
+    // The date input works in the admin's local time, without seconds.
+    expiresAt: settings.expiresAt ? format(new Date(settings.expiresAt), 'yyyy-MM-dd\'T\'HH:mm') : '',
+  };
+  const [unit, value] = Object.entries(settings.validFor ?? {})[0] ?? [];
+  if (unit && value) {
+    form.validForUnit = unit as ValidityUnit;
+    form.validForValue = value;
+  }
+  initialEditForm = structuredClone(form);
+  batchForm.value = form;
+  editingBatchId.value = batchId;
+  showBatchModal.value = true;
+}
+
+/**
+ * The validity part of the form as the API takes it, or `null` while the
+ * first-use duration is not a positive whole number. The date is sent as an
+ * instant so the server does not read it in its own time zone.
+ */
+function validityBody(form: BatchForm): { validFor: ValidityDuration } | { expiresAt: string | null } | null {
+  if (form.validityStart === 'first_use') {
+    if (!Number.isInteger(form.validForValue) || form.validForValue < 1)
+      return null;
+    return { validFor: { [form.validForUnit]: form.validForValue } };
+  }
+  return { expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null };
+}
+
+/** An emptied number input holds `''` rather than `null`. */
+function usageLimitOf(form: BatchForm): number | null {
+  return form.usageLimit || null;
+}
 
 const validityStartOptions = computed(() => [
   { label: t('token_validity_start_immediately'), value: 'immediately' },
@@ -500,30 +567,58 @@ const tokenColumns: TableColumn<TokenRow>[] = [
   },
 ];
 
+function handleSubmitBatch() {
+  return editingBatchId.value ? handleUpdateBatch(editingBatchId.value) : handleCreateBatch();
+}
+
 async function handleCreateBatch() {
-  if (!batchForm.value.name.trim())
+  const form = batchForm.value;
+  const validity = validityBody(form);
+  if (!form.name.trim() || !validity)
     return;
   const body: Record<string, unknown> = {
     ...(props.groupId ? { groupId: props.groupId } : { mediaId: props.mediaId }),
-    name: batchForm.value.name.trim(),
-    count: batchForm.value.count,
+    name: form.name.trim(),
+    count: form.count,
+    ...validity,
   };
-  if (batchForm.value.usageLimit)
-    body.usageLimit = batchForm.value.usageLimit;
-  if (batchForm.value.validityStart === 'first_use') {
-    if (!Number.isInteger(batchForm.value.validForValue) || batchForm.value.validForValue < 1)
-      return;
-    body.validFor = { [batchForm.value.validForUnit]: batchForm.value.validForValue };
-  }
-  else if (batchForm.value.expiresAt) {
-    body.expiresAt = batchForm.value.expiresAt;
-  }
+  const usageLimit = usageLimitOf(form);
+  if (usageLimit)
+    body.usageLimit = usageLimit;
   await $fetch('/api/batches', {
     method: 'POST',
     body,
   });
   showBatchModal.value = false;
   batchForm.value = emptyBatchForm();
+  await Promise.all([refreshBatches(), refreshTokens()]);
+}
+
+/**
+ * Sends only what differs from the opened form: re-sending an untouched
+ * validity would needlessly rewrite the expiry of every token of the batch.
+ */
+async function handleUpdateBatch(batchId: string) {
+  const form = batchForm.value;
+  const initial = initialEditForm;
+  const validity = validityBody(form);
+  if (!form.name.trim() || !validity || !initial)
+    return;
+  const body: Record<string, unknown> = {};
+  if (form.name.trim() !== initial.name)
+    body.name = form.name.trim();
+  if (usageLimitOf(form) !== usageLimitOf(initial))
+    body.usageLimit = usageLimitOf(form);
+  if (JSON.stringify(validity) !== JSON.stringify(validityBody(initial)))
+    Object.assign(body, validity);
+  if (Object.keys(body).length > 0) {
+    await $fetch(`/api/batches/${batchId}`, {
+      method: 'PATCH',
+      body,
+    });
+  }
+  showBatchModal.value = false;
+  editingBatchId.value = null;
   await Promise.all([refreshBatches(), refreshTokens()]);
 }
 </script>

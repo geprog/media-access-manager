@@ -46,3 +46,23 @@ export function groupMatchingTokensByBatch<Token extends FilterableToken>(
   }
   return grouped;
 }
+
+/** What a batch's tokens were created with, for prefilling its edit form. */
+export type BatchSettings = Pick<TokenRow, 'usageLimit' | 'expiresAt' | 'validFor'>;
+
+/**
+ * Reads a batch's settings off its tokens, which all share them. A first-use
+ * token that was already opened carries its own expiry date, which is not a
+ * setting of the batch, so only the duration is reported for those.
+ */
+export function getBatchSettings(tokens: TokenRow[]): BatchSettings {
+  const first = tokens[0];
+  if (!first) {
+    return { usageLimit: null, expiresAt: null, validFor: null };
+  }
+  return {
+    usageLimit: first.usageLimit,
+    expiresAt: first.validFor ? null : first.expiresAt,
+    validFor: first.validFor,
+  };
+}
