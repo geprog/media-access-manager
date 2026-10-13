@@ -70,6 +70,11 @@ export const tokens = sqliteTable('tokens', {
    */
   validFor: text('valid_for', { mode: 'json' }).$type<ValidityDuration>(),
   /**
+   * When the token was first opened, so a first-use duration changed later can
+   * still be counted from that view. Stays `null` until then.
+   */
+  firstUsedAt: integer('first_used_at', { mode: 'timestamp' }),
+  /**
    * On a group token this is the limit for *each* media of the group, not for
    * the token as a whole.
    */

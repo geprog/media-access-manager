@@ -124,9 +124,21 @@ interface MediaItem {
   first-use duration at once. Admin previews do not count as first use. For a
   group token, browsing the list is free, so the first media watched starts it.
 
+**Editing a batch** – name, usage limit and validity can be changed after
+creation and apply to every token of the batch. Views already spent are kept.
+A new first-use duration is counted from each token's `first_used_at` (set on
+any token's first view), so tokens already running are extended or shortened
+rather than restarted; tokens not yet opened keep waiting. A fixed expiry date
+replaces the expiry of every token alike.
+Before saving a change that would expire tokens still valid right now,
+overwrite the expiry of tokens already running since their first use, or lower
+the usage limit to or below what tokens have already used (for a group token:
+on any one of its media), the dialog lists how many are affected and asks the
+admin to confirm.
+
 **Schema** (simplified):
 
-- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for` (nullable JSON), `usage_limit`, `usage_count`, `created_at`
+- `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for` (nullable JSON), `first_used_at` (nullable), `usage_limit`, `usage_count`, `created_at`
 - No `TokenUsage`, `TokenAnalytics` tables
 
 **Validation logic**:
@@ -179,6 +191,7 @@ an error: some entries play, others are closed.
   - Create tokens per media _or_ per group (single or batch)
   - Batch token generation with QR codes (ZIP download)
   - List tokens per media and per group
+  - Edit a batch: name, usage limit and validity of all its tokens
 - **Removed**:
   - User CRUD
   - Analytics pages and services
