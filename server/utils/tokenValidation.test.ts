@@ -1,6 +1,6 @@
 import type { TokenLike } from './tokenValidation';
 import { describe, expect, it } from 'vitest';
-import { getActivationExpiry, getEditedValidity, getTokenInvalidReason, isTokenValid } from './tokenValidation';
+import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from './tokenValidation';
 
 describe('tokenValidation', () => {
   describe('isTokenValid', () => {
@@ -147,31 +147,6 @@ describe('tokenValidation', () => {
 
     it('leaves a token alone whose window started on creation', () => {
       expect(getActivationExpiry({ expiresAt: null, validFor: null }, now)).toBeNull();
-    });
-  });
-
-  describe('getEditedValidity', () => {
-    const firstUsedAt = new Date(2026, 11, 31, 12);
-
-    it('gives every token the same fixed expiry date', () => {
-      const expiresAt = new Date(2027, 5, 1);
-      expect(getEditedValidity({ firstUsedAt }, { expiresAt, validFor: null }))
-        .toEqual({ expiresAt, validFor: null });
-    });
-
-    it('drops the expiry date of a token switched to no expiry', () => {
-      expect(getEditedValidity({ firstUsedAt }, { expiresAt: null, validFor: null }))
-        .toEqual({ expiresAt: null, validFor: null });
-    });
-
-    it('keeps a token that was never opened waiting for its first use', () => {
-      expect(getEditedValidity({ firstUsedAt: null }, { expiresAt: null, validFor: { weeks: 2 } }))
-        .toEqual({ expiresAt: null, validFor: { weeks: 2 } });
-    });
-
-    it('counts the new duration from the first use of a token already opened', () => {
-      expect(getEditedValidity({ firstUsedAt }, { expiresAt: null, validFor: { months: 2 } }))
-        .toEqual({ expiresAt: new Date(2027, 1, 28, 12), validFor: { months: 2 } });
     });
   });
 });

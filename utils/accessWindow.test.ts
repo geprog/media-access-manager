@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addValidity, getRemainingTime, getRemainingViews, parseValidityDuration } from './accessWindow';
+import { addValidity, getEditedValidity, getRemainingTime, getRemainingViews, parseValidityDuration } from './accessWindow';
 
 const now = new Date('2026-08-29T12:00:00Z');
 
@@ -121,6 +121,30 @@ describe('accessWindow', () => {
       expect(parseValidityDuration({ days: -1 })).toBeNull();
       expect(parseValidityDuration({ days: 1.5 })).toBeNull();
       expect(parseValidityDuration({ days: '3' })).toBeNull();
+    });
+  });
+  describe('getEditedValidity', () => {
+    const firstUsedAt = new Date(2026, 11, 31, 12);
+
+    it('gives every token the same fixed expiry date', () => {
+      const expiresAt = new Date(2027, 5, 1);
+      expect(getEditedValidity({ firstUsedAt }, { expiresAt, validFor: null }))
+        .toEqual({ expiresAt, validFor: null });
+    });
+
+    it('drops the expiry date of a token switched to no expiry', () => {
+      expect(getEditedValidity({ firstUsedAt }, { expiresAt: null, validFor: null }))
+        .toEqual({ expiresAt: null, validFor: null });
+    });
+
+    it('keeps a token that was never opened waiting for its first use', () => {
+      expect(getEditedValidity({ firstUsedAt: null }, { expiresAt: null, validFor: { weeks: 2 } }))
+        .toEqual({ expiresAt: null, validFor: { weeks: 2 } });
+    });
+
+    it('counts the new duration from the first use of a token already opened', () => {
+      expect(getEditedValidity({ firstUsedAt }, { expiresAt: null, validFor: { months: 2 } }))
+        .toEqual({ expiresAt: new Date(2027, 1, 28, 12), validFor: { months: 2 } });
     });
   });
 });

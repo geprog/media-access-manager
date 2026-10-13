@@ -236,8 +236,31 @@
                 />
               </div>
             </UFormField>
-            <UButton type="submit" class="mt-4">
-              {{ editingBatchId ? $t('batch_save') : $t('create_new_tokens') }}
+            <UAlert
+              v-if="validityConflicts"
+              class="mt-4"
+              color="warning"
+              variant="subtle"
+              icon="i-heroicons-exclamation-triangle"
+              :title="$t('batch_edit_conflict_title')"
+            >
+              <template #description>
+                <ul class="list-disc ps-4">
+                  <li v-if="validityConflicts.closed">
+                    {{ $t('batch_edit_conflict_closed', { count: validityConflicts.closed }, validityConflicts.closed) }}
+                  </li>
+                  <li v-if="validityConflicts.replaced">
+                    {{ $t('batch_edit_conflict_replaced', { count: validityConflicts.replaced }, validityConflicts.replaced) }}
+                  </li>
+                </ul>
+              </template>
+            </UAlert>
+            <UButton
+              type="submit"
+              class="mt-4"
+              :color="validityConflicts ? 'warning' : 'primary'"
+            >
+              {{ validityConflicts ? $t('batch_save_anyway') : editingBatchId ? $t('batch_save') : $t('create_new_tokens') }}
             </UButton>
           </form>
         </UCard>
@@ -248,13 +271,13 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
-import type { ValidityDuration, ValidityUnit } from '~/utils/accessWindow';
+import type { TokenValidity, ValidityDuration, ValidityUnit } from '~/utils/accessWindow';
 import type { LabelPosition, QRGridSpacing } from '~/utils/qrGrid';
-import type { TokenRow } from '~/utils/tokens';
+import type { TokenRow, ValidityConflicts } from '~/utils/tokens';
 import { format } from 'date-fns';
 import { h, resolveComponent } from 'vue';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
-import { getBatchSettings, groupMatchingTokensByBatch } from '~/utils/tokens';
+import { getBatchSettings, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
   /** Set for a single media's tokens; mutually exclusive with `groupId`. */
@@ -299,6 +322,16 @@ const batchForm = ref(emptyBatchForm());
 const editingBatchId = ref<string | null>(null);
 /** The form as it was opened for editing, so only what the admin changed is sent. */
 let initialEditForm: BatchForm | null = null;
+/**
+ * Set once a save was held back because the new validity would close tokens
+ * or overwrite running ones; saving again while it is shown confirms it.
+ */
+const validityConflicts = ref<ValidityConflicts | null>(null);
+
+// The warning was about the form as it was; any edit has to be checked anew.
+watch(batchForm, () => {
+  validityConflicts.value = null;
+}, { deep: true });
 
 function openCreateModal() {
   editingBatchId.value = null;
@@ -306,11 +339,16 @@ function openCreateModal() {
   showBatchModal.value = true;
 }
 
+/** Every token of a batch, whatever the search box currently narrows the list to. */
+function batchTokens(batchId: string): TokenRow[] {
+  return (tokens.value ?? []).filter(row => row.batchId === batchId);
+}
+
 function openEditModal(batchId: string) {
   const batch = batches.value?.find(b => b.id === batchId);
   if (!batch)
     return;
-  const settings = getBatchSettings((tokens.value ?? []).filter(row => row.batchId === batchId));
+  const settings = getBatchSettings(batchTokens(batchId));
   const form: BatchForm = {
     ...emptyBatchForm(),
     name: batch.name,
@@ -326,22 +364,29 @@ function openEditModal(batchId: string) {
   }
   initialEditForm = structuredClone(form);
   batchForm.value = form;
+  validityConflicts.value = null;
   editingBatchId.value = batchId;
   showBatchModal.value = true;
 }
 
-/**
- * The validity part of the form as the API takes it, or `null` while the
- * first-use duration is not a positive whole number. The date is sent as an
- * instant so the server does not read it in its own time zone.
- */
-function validityBody(form: BatchForm): { validFor: ValidityDuration } | { expiresAt: string | null } | null {
+/** The validity the form describes, or `null` while the first-use duration is not a positive whole number. */
+function validityOf(form: BatchForm): TokenValidity | null {
   if (form.validityStart === 'first_use') {
     if (!Number.isInteger(form.validForValue) || form.validForValue < 1)
       return null;
-    return { validFor: { [form.validForUnit]: form.validForValue } };
+    return { expiresAt: null, validFor: { [form.validForUnit]: form.validForValue } };
   }
-  return { expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null };
+  return { expiresAt: form.expiresAt ? new Date(form.expiresAt) : null, validFor: null };
+}
+
+/**
+ * The validity as the API takes it. The date is sent as an instant so the
+ * server does not read it in its own time zone.
+ */
+function validityBody(validity: TokenValidity): { validFor: ValidityDuration } | { expiresAt: string | null } {
+  return validity.validFor
+    ? { validFor: validity.validFor }
+    : { expiresAt: validity.expiresAt?.toISOString() ?? null };
 }
 
 /** An emptied number input holds `''` rather than `null`. */
@@ -573,14 +618,14 @@ function handleSubmitBatch() {
 
 async function handleCreateBatch() {
   const form = batchForm.value;
-  const validity = validityBody(form);
+  const validity = validityOf(form);
   if (!form.name.trim() || !validity)
     return;
   const body: Record<string, unknown> = {
     ...(props.groupId ? { groupId: props.groupId } : { mediaId: props.mediaId }),
     name: form.name.trim(),
     count: form.count,
-    ...validity,
+    ...validityBody(validity),
   };
   const usageLimit = usageLimitOf(form);
   if (usageLimit)
@@ -597,11 +642,14 @@ async function handleCreateBatch() {
 /**
  * Sends only what differs from the opened form: re-sending an untouched
  * validity would needlessly rewrite the expiry of every token of the batch.
+ * A new validity that would close tokens or overwrite running ones is held
+ * back until the admin saves a second time to confirm it.
  */
 async function handleUpdateBatch(batchId: string) {
   const form = batchForm.value;
   const initial = initialEditForm;
-  const validity = validityBody(form);
+  const validity = validityOf(form);
+  const initialValidity = initial && validityOf(initial);
   if (!form.name.trim() || !validity || !initial)
     return;
   const body: Record<string, unknown> = {};
@@ -609,8 +657,17 @@ async function handleUpdateBatch(batchId: string) {
     body.name = form.name.trim();
   if (usageLimitOf(form) !== usageLimitOf(initial))
     body.usageLimit = usageLimitOf(form);
-  if (JSON.stringify(validity) !== JSON.stringify(validityBody(initial)))
-    Object.assign(body, validity);
+  const newValidity = validityBody(validity);
+  if (JSON.stringify(newValidity) !== JSON.stringify(initialValidity && validityBody(initialValidity))) {
+    if (!validityConflicts.value) {
+      const conflicts = getValidityConflicts(batchTokens(batchId), validity);
+      if (conflicts.closed > 0 || conflicts.replaced > 0) {
+        validityConflicts.value = conflicts;
+        return;
+      }
+    }
+    Object.assign(body, newValidity);
+  }
   if (Object.keys(body).length > 0) {
     await $fetch(`/api/batches/${batchId}`, {
       method: 'PATCH',
@@ -619,6 +676,7 @@ async function handleUpdateBatch(batchId: string) {
   }
   showBatchModal.value = false;
   editingBatchId.value = null;
+  validityConflicts.value = null;
   await Promise.all([refreshBatches(), refreshTokens()]);
 }
 </script>

@@ -1,6 +1,6 @@
 import type { TokenRow } from './tokens';
 import { describe, expect, it } from 'vitest';
-import { getBatchSettings, groupMatchingTokensByBatch } from './tokens';
+import { getBatchSettings, getValidityConflicts, groupMatchingTokensByBatch } from './tokens';
 
 function token(value: string, batchId: string | null) {
   return { token: value, batchId };
@@ -57,20 +57,21 @@ describe('groupMatchingTokensByBatch', () => {
   });
 });
 
-describe('getBatchSettings', () => {
-  function row(overrides: Partial<TokenRow>): TokenRow {
-    return {
-      token: 'abc',
-      name: '1',
-      usageCount: 0,
-      usageLimit: null,
-      expiresAt: null,
-      validFor: null,
-      batchId: 'batch-1',
-      ...overrides,
-    };
-  }
+function row(overrides: Partial<TokenRow>): TokenRow {
+  return {
+    token: 'abc',
+    name: '1',
+    usageCount: 0,
+    usageLimit: null,
+    expiresAt: null,
+    validFor: null,
+    firstUsedAt: null,
+    batchId: 'batch-1',
+    ...overrides,
+  };
+}
 
+describe('getBatchSettings', () => {
   it('reads a fixed expiry date and the usage limit off the batch', () => {
     const expiresAt = '2027-06-01T10:00:00.000Z';
     expect(getBatchSettings([row({ usageLimit: 3, expiresAt }), row({ usageLimit: 3, expiresAt })]))
@@ -87,5 +88,42 @@ describe('getBatchSettings', () => {
 
   it('has nothing to report for a batch without tokens', () => {
     expect(getBatchSettings([])).toEqual({ usageLimit: null, expiresAt: null, validFor: null });
+  });
+});
+
+describe('getValidityConflicts', () => {
+  const now = new Date('2027-01-10T12:00:00.000Z');
+
+  /** Opened on 1 January for two weeks, so still running on the 10th. */
+  const running = row({ validFor: { days: 14 }, firstUsedAt: '2027-01-01T12:00:00.000Z', expiresAt: '2027-01-15T12:00:00.000Z' });
+  const waiting = row({ validFor: { days: 14 } });
+
+  it('finds nothing when the change leaves every token usable', () => {
+    expect(getValidityConflicts([waiting, running], { expiresAt: null, validFor: { days: 30 } }, now))
+      .toEqual({ closed: 0, replaced: 0 });
+  });
+
+  it('counts open tokens a shorter first-use duration would close at once', () => {
+    expect(getValidityConflicts([waiting, running], { expiresAt: null, validFor: { days: 7 } }, now))
+      .toEqual({ closed: 1, replaced: 0 });
+  });
+
+  it('counts open tokens a fixed date in the past would close at once', () => {
+    const tokens = [row({ expiresAt: '2027-02-01T00:00:00.000Z' }), row({})];
+    expect(getValidityConflicts(tokens, { expiresAt: new Date('2027-01-01T00:00:00.000Z'), validFor: null }, now))
+      .toEqual({ closed: 2, replaced: 0 });
+  });
+
+  it('does not count tokens that had already expired', () => {
+    const tokens = [row({ expiresAt: '2027-01-05T00:00:00.000Z' })];
+    expect(getValidityConflicts(tokens, { expiresAt: new Date('2027-01-01T00:00:00.000Z'), validFor: null }, now))
+      .toEqual({ closed: 0, replaced: 0 });
+  });
+
+  it('counts running first-use tokens whose own expiry a fixed date would replace', () => {
+    expect(getValidityConflicts([waiting, running], { expiresAt: new Date('2027-06-01T00:00:00.000Z'), validFor: null }, now))
+      .toEqual({ closed: 0, replaced: 1 });
+    expect(getValidityConflicts([waiting, running], { expiresAt: null, validFor: null }, now))
+      .toEqual({ closed: 0, replaced: 1 });
   });
 });

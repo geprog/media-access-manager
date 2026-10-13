@@ -1,4 +1,5 @@
-import type { ValidityDuration } from './accessWindow';
+import type { TokenValidity, ValidityDuration } from './accessWindow';
+import { getEditedValidity } from './accessWindow';
 
 /** A token as the media details page lists it. */
 export interface TokenRow {
@@ -9,6 +10,8 @@ export interface TokenRow {
   expiresAt: string | null
   /** Set while a token waits for the first use that starts its validity. */
   validFor: ValidityDuration | null
+  /** When the token was first opened, `null` until then. */
+  firstUsedAt: string | null
   batchId: string | null
 }
 
@@ -65,4 +68,36 @@ export function getBatchSettings(tokens: TokenRow[]): BatchSettings {
     expiresAt: first.validFor ? null : first.expiresAt,
     validFor: first.validFor,
   };
+}
+
+/** What a new validity would do to a batch's tokens that the admin may not expect. */
+export interface ValidityConflicts {
+  /** Tokens usable right now that the new validity would close at once. */
+  closed: number
+  /**
+   * Tokens already running on a first-use duration whose own expiry a fixed
+   * date (or none) would overwrite.
+   */
+  replaced: number
+}
+
+/** Counts the tokens a validity change would close or whose running expiry it would replace. */
+export function getValidityConflicts(
+  tokens: TokenRow[],
+  validity: TokenValidity,
+  now: Date = new Date(),
+): ValidityConflicts {
+  const conflicts: ValidityConflicts = { closed: 0, replaced: 0 };
+  for (const token of tokens) {
+    const isOpen = !token.expiresAt || new Date(token.expiresAt) > now;
+    const firstUsedAt = token.firstUsedAt ? new Date(token.firstUsedAt) : null;
+    const { expiresAt } = getEditedValidity({ firstUsedAt }, validity);
+    if (isOpen && expiresAt && expiresAt <= now) {
+      conflicts.closed++;
+    }
+    else if (!validity.validFor && token.validFor && token.expiresAt) {
+      conflicts.replaced++;
+    }
+  }
+  return conflicts;
 }

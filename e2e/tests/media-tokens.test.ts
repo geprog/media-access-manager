@@ -230,6 +230,34 @@ test.describe('Media and Tokens', () => {
     }
   });
 
+  test('asks before an edit expires tokens already handed out', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Expires at').fill('2020-01-01T10:00');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+
+    // Nothing is saved yet: the dialog stays open and names what would happen.
+    await expect(dialog.getByText('2 tokens that are valid now would expire immediately.')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Save anyway' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row).toContainText('2020');
+    }
+  });
+
   test('use token to see media', async ({ page }, testInfo) => {
     await login(page);
 

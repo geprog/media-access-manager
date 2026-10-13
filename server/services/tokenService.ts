@@ -1,13 +1,14 @@
 import type { Media, MediaGroup, Token } from '../db/schema';
 import type { GroupMediaAccess } from '../utils/groupAccess';
-import type { TokenInvalidReason, TokenValidity } from '../utils/tokenValidation';
-import type { ValidityDuration } from '~/utils/accessWindow';
+import type { TokenInvalidReason } from '../utils/tokenValidation';
+import type { TokenValidity, ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
+import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
-import { getActivationExpiry, getEditedValidity, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
+import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
 
 export { getGroupWindowReason, isTokenValid };
