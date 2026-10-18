@@ -5,6 +5,7 @@ import {
   createTokenViaUI,
   deleteTestData,
   login,
+  mockConfirmedView,
   stubProviderCalls,
   uniqueId,
   videoEmbed,
@@ -158,6 +159,35 @@ test.describe('Media groups', () => {
     // Exactly one video is still openable; the used-up one offers no way in.
     await expect(page.getByRole('link', { name: 'Watch' })).toHaveCount(1);
     await expect(page.getByText(/can no longer be opened with your link/i)).toBeVisible();
+  });
+
+  test('asks before spending a view of a group media', async ({ page }, testInfo) => {
+    await login(page);
+
+    const suffix = uniqueId(testInfo.testId);
+    const title = `E2E Confirm Video ${suffix}`;
+    await addMediaViaUI(page, title, '815000001');
+
+    const groupName = `E2E Confirm Group ${suffix}`;
+    await createGroupViaUI(page, groupName, [title]);
+    await openGroupViaUI(page, groupName);
+    const token = await createTokenViaUI(page, `E2E Confirm Batch ${suffix}`, 1, { usageLimit: 2 });
+
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+    await page.getByRole('link', { name: 'Watch' }).click();
+
+    // Picking a media from the list does not spend its view yet.
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('2 views left')).toBeVisible();
+    await expect(page.locator('iframe')).toHaveCount(0);
+
+    await mockConfirmedView(page, /\/api\/access\/[^/]+\/[^/]+$/, 'E2E Confirmed Group Player');
+    await page.getByRole('button', { name: 'Watch now' }).click();
+
+    await expect(page.locator('iframe[title="E2E Confirmed Group Player"]')).toBeVisible({ timeout: 10000 });
+    await page.getByRole('link', { name: /back to the list/i }).click();
+    await expect(page).toHaveURL(`/${token}`);
   });
 
   test('sends a visitor whose group link expired to support', async ({ page }, testInfo) => {

@@ -1,22 +1,12 @@
-import { getMediaById } from '../../services/mediaService';
-import {
-  denialFor,
-  getAccessDenial,
-  getGroupTokenAccess,
-  getGroupWindowReason,
-  validateAndConsumeToken,
-  validateToken,
-} from '../../services/tokenService';
-import { requireViewableMedia } from '../../utils/publicAccess';
+import { denialFor, getGroupTokenAccess, getGroupWindowReason } from '../../services/tokenService';
+import { denied, isAdminRequest, openMediaToken } from '../../utils/publicAccess';
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token');
   if (!token) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
-  const session = await getUserSession(event);
-  const user = session?.user as { role?: string } | undefined;
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = await isAdminRequest(event);
 
   // A group token unlocks several media, so this page only lists them. Nothing
   // is spent until the visitor picks one — see `[token]/[mediaId].get.ts`.
@@ -61,44 +51,8 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  const tokenRow = isAdmin
-    ? await validateToken(token)
-    : await validateAndConsumeToken(token);
-  if (!tokenRow?.mediaId) {
-    const denial = await getAccessDenial(token);
-    const deniedMedia = denial.mediaId ? await getMediaById(denial.mediaId) : null;
-    throw denied({
-      reason: denial.reason,
-      title: deniedMedia?.title ?? null,
-      // Admins check their own links here; the id sends them on to the media
-      // instead of a support mail. Visitors have no use for it.
-      mediaId: isAdmin ? denial.mediaId : null,
-      groupId: null,
-    });
-  }
-  const viewable = await requireViewableMedia(tokenRow.mediaId);
-  return {
-    type: 'media' as const,
-    title: viewable.title,
-    embed: viewable.embed,
-    // Only the limits of the visitor's own token, so they can see how much of
-    // their access window is left. Nothing about the token's owner or batch.
-    access: {
-      expiresAt: tokenRow.expiresAt?.toISOString() ?? null,
-      validFor: tokenRow.validFor,
-      usageLimit: tokenRow.usageLimit,
-      usageCount: tokenRow.usageCount,
-    },
-  };
+  // A single-media token plays right away unless the view would cost the
+  // visitor something; then only a preview comes back, and the page asks before
+  // spending it through `[token].post.ts`.
+  return openMediaToken(event, token, { confirmed: false });
 });
-
-interface DenialData {
-  reason: string
-  title: string | null
-  mediaId: string | null
-  groupId: string | null
-}
-
-function denied(data: DenialData) {
-  return createError({ statusCode: 404, statusMessage: 'Not Found', data });
-}

@@ -19,6 +19,18 @@
       :valid-for="access.access.validFor"
       :media="access.media"
     />
+    <!-- Watching would spend a limited view or start the access window, so the
+         visitor is asked first instead of losing it to an accidental tap. -->
+    <PublicViewConfirmation
+      v-else-if="access.confirmationRequired"
+      :title="access.title"
+      :expires-at="access.access.expiresAt"
+      :valid-for="access.access.validFor"
+      :usage-limit="access.access.usageLimit"
+      :usage-count="access.access.usageCount"
+      :loading="confirming"
+      @confirm="confirm"
+    />
     <PublicMediaPlayer
       v-else
       :title="access.title"
@@ -40,17 +52,21 @@ const route = useRoute();
 
 const token = computed(() => route.params.token as string);
 
+const accessUrl = () => `/api/access/${encodeURIComponent(token.value)}` as const;
+
 const { data: access, error, status } = useFetch(
-  () => `/api/access/${encodeURIComponent(token.value)}`,
+  accessUrl,
   // Views a group token spent come back with this list, so returning here
   // after watching must not show the counts from before.
   { getCachedData: () => undefined },
 );
 
+const { confirming, error: confirmError, confirm } = useViewConfirmation(accessUrl, access);
+
 const loading = computed(() => status.value === 'pending');
 
 const denial = computed(() => {
-  const body = error.value?.data as {
+  const body = (confirmError.value ?? error.value)?.data as {
     data?: { reason?: string, title?: string | null, mediaId?: string | null, groupId?: string | null }
   } | undefined;
   return body?.data;

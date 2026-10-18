@@ -58,3 +58,14 @@ export function getActivationExpiry(
   }
   return addValidity(now, tokenRow.validFor);
 }
+
+/**
+ * Whether opening the media costs the visitor something they may not want to
+ * spend by accident — one of a limited number of views, or the start of a
+ * validity that runs from first use — so the page asks before playing.
+ */
+export function requiresViewConfirmation(
+  tokenRow: ActivatableToken & { usageLimit: number | null },
+): boolean {
+  return tokenRow.usageLimit != null || getActivationExpiry(tokenRow) !== null;
+}

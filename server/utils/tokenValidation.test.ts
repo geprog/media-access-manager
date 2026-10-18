@@ -1,6 +1,6 @@
 import type { TokenLike } from './tokenValidation';
 import { describe, expect, it } from 'vitest';
-import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from './tokenValidation';
+import { getActivationExpiry, getTokenInvalidReason, isTokenValid, requiresViewConfirmation } from './tokenValidation';
 
 describe('tokenValidation', () => {
   describe('isTokenValid', () => {
@@ -147,6 +147,31 @@ describe('tokenValidation', () => {
 
     it('leaves a token alone whose window started on creation', () => {
       expect(getActivationExpiry({ expiresAt: null, validFor: null }, now)).toBeNull();
+    });
+  });
+
+  describe('requiresViewConfirmation', () => {
+    const unlimited = { expiresAt: null, validFor: null, usageLimit: null };
+
+    it('lets an unlimited link play straight away', () => {
+      expect(requiresViewConfirmation(unlimited)).toBe(false);
+    });
+
+    it('lets a link with a fixed expiry play straight away', () => {
+      expect(requiresViewConfirmation({ ...unlimited, expiresAt: new Date(2027, 0, 1) })).toBe(false);
+    });
+
+    it('asks before spending one of a limited number of views', () => {
+      expect(requiresViewConfirmation({ ...unlimited, usageLimit: 3 })).toBe(true);
+    });
+
+    it('asks before starting a validity that runs from first use', () => {
+      expect(requiresViewConfirmation({ ...unlimited, validFor: { days: 7 } })).toBe(true);
+    });
+
+    it('lets a link play whose first-use validity already started', () => {
+      const token = { expiresAt: new Date(2027, 0, 1), validFor: { days: 7 }, usageLimit: null };
+      expect(requiresViewConfirmation(token)).toBe(false);
     });
   });
 });

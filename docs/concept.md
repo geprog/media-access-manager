@@ -171,7 +171,8 @@ nothing is validated against it for a group token.
 1. `/{token}` lists the group's media with each one's own remaining access.
    Looking at the list costs nothing.
 2. The visitor picks one and lands on `/{token}/{mediaId}`, which spends a view
-   on that media alone and renders the player.
+   on that media alone and renders the player — after the visitor confirmed it,
+   when the view is limited or starts the access period.
 3. Media the token can no longer open stay on the list, marked as used up
    rather than hidden — the visitor sees what they had and can ask for more.
 
@@ -205,8 +206,20 @@ an error: some entries play, others are closed.
 1. User visits `/{token}` (or similar).
 2. Validate token (dates + usage limit).
 3. If invalid → show message: "This link is no longer valid. Please contact support."
-4. If valid → fetch embed via provider, increment `usage_count`, render player.
-5. No device tracking, no analytics.
+4. If the view would cost the visitor something — the token has a usage limit,
+   or its validity starts on first use and has not started yet — the page only
+   shows the media title, the remaining access and what watching now would
+   spend (one view; the access period starting, with the date it would end).
+   Nothing is spent until the visitor confirms with "Watch now" / "Start access
+   now"; reloading the page asks again. Admin previews never spend anything and
+   skip the question.
+5. If valid and confirmed (or nothing to confirm) → fetch embed via provider,
+   increment `usage_count`, render player.
+6. No device tracking, no analytics.
+
+The confirmation is a `POST` to the same access endpoint the page reads with
+`GET`: `GET` never spends a view that needs confirming, so neither an accidental
+tap nor a messenger's link preview fetching the URL uses up access.
 
 **Group token**
 
@@ -215,7 +228,9 @@ an error: some entries play, others are closed.
 2. User picks one and lands on `/{token}/{mediaId}`.
 3. Validate the date window plus _that media's_ count; if it is used up, the
    media is refused while the rest of the group stays open.
-4. If valid → fetch embed via provider, increment that media's `usage_count`,
+4. As for a single-media token, a view that would spend a limited view or start
+   the access period is confirmed first.
+5. If valid → fetch embed via provider, increment that media's `usage_count`,
    render player, and offer the way back to the list.
 
 ---
