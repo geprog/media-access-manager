@@ -26,8 +26,12 @@ const {
   listViewsBetween,
   validateAndConsumeToken,
 } = await import('./tokenService');
-const { createMedia } = await import('./mediaService');
-const { createMediaGroup } = await import('./mediaGroupService');
+const { createMedia, deleteMedia } = await import('./mediaService');
+const { createMediaGroup, deleteMediaGroup } = await import('./mediaGroupService');
+
+function countViews(): number {
+  return (sqlite.prepare('SELECT count(*) AS n FROM token_views').get() as { n: number }).n;
+}
 
 let counter = 0;
 
@@ -99,8 +103,60 @@ describe('getTokenViewHistory', () => {
     expect(newest!.viewedAt.getTime()).toBeGreaterThan(oldest!.viewedAt.getTime());
   });
 
+  it('keeps views of the same second in the order they were spent', async () => {
+    const mediaId = await someMedia();
+    const { id, token } = await createToken({ mediaId, name: 'one' });
+    await validateAndConsumeToken(token);
+    await validateAndConsumeToken(token);
+    const [first, second] = sqlite.prepare('SELECT id FROM token_views ORDER BY rowid').all() as Array<{ id: string }>;
+
+    const history = await getTokenViewHistory(id);
+
+    expect(history?.views.map(view => view.id)).toEqual([second!.id, first!.id]);
+  });
+
   it('is `null` for a token that does not exist', async () => {
     expect(await getTokenViewHistory('nope')).toBeNull();
+  });
+});
+
+describe('deleting what views point at', () => {
+  it('takes the views of a media along with its tokens', async () => {
+    const mediaId = await someMedia();
+    const { token } = await createToken({ mediaId, name: 'one' });
+    await validateAndConsumeToken(token);
+
+    await deleteMedia(mediaId);
+
+    expect(countViews()).toBe(0);
+  });
+
+  it('drops a group token\'s views of a deleted media, and its total with them', async () => {
+    const [a, b] = [await someMedia('A'), await someMedia('B')];
+    const group = await createMediaGroup('Workshop', [a, b]);
+    const { id, token } = await createToken({ groupId: group.id, name: 'group' });
+    const tokenRow = (await findTokenByValue(token))!;
+    await consumeGroupMediaView(tokenRow, a);
+    await consumeGroupMediaView(tokenRow, a);
+    await consumeGroupMediaView(tokenRow, b);
+
+    await deleteMedia(a);
+
+    const history = await getTokenViewHistory(id);
+    expect(history?.views.map(view => view.mediaTitle)).toEqual(['B']);
+    // The total follows the history, so the dialog has no gap to explain.
+    expect(history?.token.usageCount).toBe(1);
+  });
+
+  it('takes the views of a group along with its tokens', async () => {
+    const mediaId = await someMedia();
+    const group = await createMediaGroup('Workshop', [mediaId]);
+    const { token } = await createToken({ groupId: group.id, name: 'group' });
+    await consumeGroupMediaView((await findTokenByValue(token))!, mediaId);
+
+    await deleteMediaGroup(group.id);
+
+    expect(countViews()).toBe(0);
   });
 });
 

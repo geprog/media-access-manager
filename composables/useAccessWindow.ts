@@ -32,6 +32,14 @@ export function useDurationFormatter() {
     new Intl.DurationFormat(locale.value, { style: 'long' }).format(duration);
 }
 
+/** Words a moment the way the admin pages show times ("Oct 18, 2026, 11:38 PM"). */
+export function useDateTimeFormatter() {
+  const { locale } = useI18n();
+
+  return (value: string | number | Date) =>
+    new Date(value).toLocaleString(locale.value, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 /**
  * How long the visitor's access still lasts, worded for a badge. `null` when
  * there is nothing worth saying — a link with no expiry date but a view limit

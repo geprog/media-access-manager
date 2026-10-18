@@ -216,7 +216,9 @@ The history answers two questions:
   to one media; the media page links here with its own id.
 
 Deleting a media removes the views that point at it (its own tokens' and group
-tokens' alike); deleting a group removes the views of its tokens.
+tokens' alike), and lowers each group token's total by the views it spent
+there, so a token's count and its history keep agreeing; deleting a group
+removes the views of its tokens.
 
 ---
 

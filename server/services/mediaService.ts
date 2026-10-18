@@ -1,6 +1,6 @@
 import type { MediaInsert } from '../db/schema';
 import type { AccessibilityContext, AccessibilityReport, MediaProvider, OEmbedResponse } from './providers/types';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { batches, media, mediaGroupItems, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { useDb } from '../utils/db';
 import { filterAvailableMediaItems } from '../utils/mediaAvailability';
@@ -65,6 +65,14 @@ export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
     // Its own tokens' views all point at it, and so do a group token's views
     // of it, so the one condition covers the history of both.
     tx.delete(tokenViews).where(eq(tokenViews.mediaId, id)).run();
+    // A group token's total counts the views it spent here, and its history
+    // just lost them; the total follows, or the two would contradict each other.
+    for (const spent of tx.select().from(tokenMediaUsage).where(eq(tokenMediaUsage.mediaId, id)).all()) {
+      tx.update(tokens)
+        .set({ usageCount: sql`max(0, ${tokens.usageCount} - ${spent.usageCount})` })
+        .where(eq(tokens.id, spent.tokenId))
+        .run();
+    }
     tx.delete(tokenMediaUsage).where(eq(tokenMediaUsage.mediaId, id)).run();
     const removedFromGroups = tx.delete(mediaGroupItems).where(eq(mediaGroupItems.mediaId, id)).run().changes;
     const deletedTokens = tx.delete(tokens).where(eq(tokens.mediaId, id)).run().changes;

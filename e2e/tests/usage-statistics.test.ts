@@ -179,7 +179,7 @@ test.describe('Usage statistics', () => {
     await expect(page.getByRole('row').filter({ hasText: dayLabel(threeDaysAgo) })).toContainText('2');
     // Thirty days, today included, quiet ones listed as zero. Only the chart's
     // rows start with a weekday; the tables below start with a title or a date.
-    await expect(page.getByRole('row').filter({ hasText: /^(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, / })).toHaveCount(30);
+    await expect(page.getByRole('row').filter({ hasText: /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), / })).toHaveCount(30);
 
     // Per media, and the latest views with their token and batch.
     await expect(page.getByRole('row').filter({ hasText: 'E2E Stats Video' }).first()).toContainText('5');

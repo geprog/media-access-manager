@@ -78,8 +78,8 @@
           <h2 class="text-lg font-semibold">
             {{ $t('statistics_recent_views') }}
           </h2>
-          <p class="text-sm text-muted">
-            {{ $t('statistics_recent_views_hint', { count: statistics?.recentLimit ?? 50 }) }}
+          <p v-if="statistics" class="text-sm text-muted">
+            {{ $t('statistics_recent_views_hint', { count: statistics.recentLimit }) }}
           </p>
         </div>
       </template>
@@ -108,7 +108,7 @@ import { fillBuckets, getStatisticsRange, STATISTICS_PERIODS } from '~/utils/vie
 
 const NuxtLink = resolveComponent('NuxtLink');
 const UButton = resolveComponent('UButton');
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const route = useRoute();
 
 const ALL_MEDIA = 'all';
@@ -125,7 +125,17 @@ const mediaOptions = computed(() => [
   ...media.value.map(item => ({ label: item.title, value: item.id })),
 ]);
 
-const range = computed(() => getStatisticsRange(period.value));
+/**
+ * The upper bound of the range. Taken afresh on every filter change, and every
+ * few minutes while the page stays open, so a refetch never reuses the moment
+ * the page was opened and misses the views spent since.
+ */
+const STATISTICS_REFRESH_MS = 5 * 60 * 1000;
+const now = useNow(STATISTICS_REFRESH_MS);
+watch([period, mediaFilter], () => {
+  now.value = new Date();
+}, { flush: 'sync' });
+const range = computed(() => getStatisticsRange(period.value, now.value));
 // The server counts in whatever time zone the page names, so the days on the
 // chart are the admin's days.
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -154,9 +164,7 @@ type RecentRow = NonNullable<typeof statistics.value>['recent'][number];
 
 const historyTokenId = ref<string | null>(null);
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleString(locale.value, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const formatTime = useDateTimeFormatter();
 
 const numberColumn = { class: { th: 'text-right', td: 'text-right tabular-nums' } };
 

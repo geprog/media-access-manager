@@ -87,7 +87,7 @@ import type { TableColumn } from '@nuxt/ui';
 /** The token whose history is shown; the dialog is open while it is set. */
 const tokenId = defineModel<string | null>('tokenId', { required: true });
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const formatDuration = useDurationFormatter();
 
 const { data: history, status, error, execute, clear } = useFetch(() => `/api/tokens/${tokenId.value}/views`, {
@@ -114,9 +114,7 @@ const open = computed({
   },
 });
 
-function formatTime(value: string | Date) {
-  return new Date(value).toLocaleString(locale.value, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const formatTime = useDateTimeFormatter();
 
 const expiresText = computed(() => {
   const token = history.value?.token;

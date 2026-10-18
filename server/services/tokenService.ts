@@ -12,6 +12,7 @@ import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess'
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
+import { getMediaById } from './mediaService';
 
 export { getGroupWindowReason, isTokenValid };
 
@@ -123,7 +124,7 @@ export async function validateAndConsumeToken(tokenValue: string): Promise<Token
     const now = new Date();
     const updated = tx
       .update(tokens)
-      .set({ usageCount: tokenRow.usageCount + 1, ...activationColumns(tokenRow, now) })
+      .set({ usageCount: sql`${tokens.usageCount} + 1`, ...activationColumns(tokenRow, now) })
       .where(eq(tokens.id, tokenRow.id))
       .returning()
       .get();
@@ -288,15 +289,23 @@ export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHis
     .from(tokenViews)
     .innerJoin(media, eq(media.id, tokenViews.mediaId))
     .where(eq(tokenViews.tokenId, tokenId))
-    .orderBy(desc(tokenViews.viewedAt), desc(tokenViews.id));
+    .orderBy(...newestViewFirst());
   let targetTitle: string | null = null;
   if (tokenRow.mediaId) {
-    targetTitle = (await db.select({ title: media.title }).from(media).where(eq(media.id, tokenRow.mediaId)))[0]?.title ?? null;
+    targetTitle = (await getMediaById(tokenRow.mediaId))?.title ?? null;
   }
   else if (tokenRow.groupId) {
     targetTitle = (await getMediaGroupById(tokenRow.groupId))?.name ?? null;
   }
   return { token: tokenRow, targetTitle, views };
+}
+
+/**
+ * Views are stamped in whole seconds, so two spent within the same second
+ * fall back to the order they were written in rather than to their random ids.
+ */
+function newestViewFirst() {
+  return [desc(tokenViews.viewedAt), desc(sql`${tokenViews}.rowid`)];
 }
 
 function viewsBetween(from: Date, to: Date, mediaId: string | null) {
@@ -343,7 +352,7 @@ export async function listRecentViews(from: Date, to: Date, mediaId: string | nu
     .leftJoin(batches, eq(batches.id, tokens.batchId))
     .leftJoin(mediaGroups, eq(mediaGroups.id, tokens.groupId))
     .where(viewsBetween(from, to, mediaId))
-    .orderBy(desc(tokenViews.viewedAt), desc(tokenViews.id))
+    .orderBy(...newestViewFirst())
     .limit(limit);
 }
 

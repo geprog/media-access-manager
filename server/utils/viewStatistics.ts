@@ -32,30 +32,39 @@ export interface SummaryOptions {
 }
 
 /**
- * The bucket a moment falls into, named `yyyy-mm-dd` (or `yyyy-mm`) in the
+ * Names the bucket a moment falls into, `yyyy-mm-dd` (or `yyyy-mm`) in the
  * given time zone. Assembled from the date parts rather than a locale's
  * format, so the key is the same whatever locale the server runs with — and
- * the same the page computes for its local days.
+ * the same the page computes for its local days. The formatter is built once
+ * here, because a summary names thousands of moments.
  */
-export function getBucketKeyInTimeZone(date: Date, granularity: BucketGranularity, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en', {
+export function createBucketKeyFormatter(granularity: BucketGranularity, timeZone: string): (date: Date) => string {
+  const formatter = new Intl.DateTimeFormat('en', {
     timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(entry => entry.type === type)?.value ?? '';
-  const month = `${part('year')}-${part('month')}`;
-  return granularity === 'month' ? month : `${month}-${part('day')}`;
+  });
+  return (date) => {
+    const parts = formatter.formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(entry => entry.type === type)?.value ?? '';
+    const month = `${part('year')}-${part('month')}`;
+    return granularity === 'month' ? month : `${month}-${part('day')}`;
+  };
+}
+
+export function getBucketKeyInTimeZone(date: Date, granularity: BucketGranularity, timeZone: string): string {
+  return createBucketKeyFormatter(granularity, timeZone)(date);
 }
 
 /** Counts the views along the time axis and per media. */
 export function summarizeViews(views: RecordedView[], options: SummaryOptions): ViewSummary {
+  const bucketKey = createBucketKeyFormatter(options.granularity, options.timeZone);
   const buckets: Record<string, number> = {};
   const tokens = new Set<string>();
   const media = new Map<string, MediaViewSummary & { tokenIds: Set<string> }>();
   for (const view of views) {
-    const key = getBucketKeyInTimeZone(view.viewedAt, options.granularity, options.timeZone);
+    const key = bucketKey(view.viewedAt);
     buckets[key] = (buckets[key] ?? 0) + 1;
     tokens.add(view.tokenId);
     const entry = media.get(view.mediaId)

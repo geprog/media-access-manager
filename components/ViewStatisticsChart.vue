@@ -17,6 +17,9 @@
       :columns="tableColumns"
     />
 
+    <!-- One image to assistive technology, summed up in its label: the bars'
+         tooltips are pointer-only, and the table view above is the keyboard
+         path to every value. -->
     <div
       v-else
       role="img"
@@ -48,7 +51,7 @@
             />
             <!-- A 2px gap of surface between neighbors keeps the bars apart
                  without drawing a border around them. -->
-            <div class="absolute inset-0 flex items-end gap-[2px]">
+            <div class="absolute inset-0 flex items-end gap-[2px]" aria-hidden="true">
               <UTooltip
                 v-for="bucket in buckets"
                 :key="bucket.key"
