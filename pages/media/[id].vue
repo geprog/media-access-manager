@@ -13,11 +13,22 @@
           <h1 class="text-2xl font-bold">
             {{ media.title ?? '...' }}
           </h1>
-          <MediaDeleteButton
-            :media-id="id"
-            :title="media.title ?? ''"
-            @deleted="handleMediaDeleted"
-          />
+          <div class="flex items-center gap-2">
+            <!-- The statistics page opened on this one media, so an admin can
+                 see how it is doing without picking it from the filter. -->
+            <UButton
+              variant="ghost"
+              size="sm"
+              icon="i-heroicons-chart-bar"
+              :label="$t('statistics_title')"
+              :to="{ path: '/statistics', query: { mediaId: id } }"
+            />
+            <MediaDeleteButton
+              :media-id="id"
+              :title="media.title ?? ''"
+              @deleted="handleMediaDeleted"
+            />
+          </div>
         </div>
       </template>
       <div class="space-y-6">
