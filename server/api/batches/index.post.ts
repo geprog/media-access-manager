@@ -13,7 +13,8 @@ export default defineEventHandler(async (event) => {
     validFor?: unknown
     usageLimit?: number
   }>(event);
-  const name = body?.name ?? '';
+  // Trimmed like a rename, so a name of only spaces counts as none.
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
   const count = body?.count ?? 1;
   // Same rule as for a single token: exactly one target.
   const target: TokenTarget | null = body?.mediaId

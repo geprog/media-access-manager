@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { batches, media, mediaGroupItems, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { useDb } from '../utils/db';
 import { filterAvailableMediaItems } from '../utils/mediaAvailability';
+import { deleteTokensWhere } from '../utils/tokenDeletion';
 import { createVimeoProvider } from './providers/vimeo';
 
 const providers = new Map<string, MediaProvider<any>>();
@@ -75,7 +76,7 @@ export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
     }
     tx.delete(tokenMediaUsage).where(eq(tokenMediaUsage.mediaId, id)).run();
     const removedFromGroups = tx.delete(mediaGroupItems).where(eq(mediaGroupItems.mediaId, id)).run().changes;
-    const deletedTokens = tx.delete(tokens).where(eq(tokens.mediaId, id)).run().changes;
+    const deletedTokens = deleteTokensWhere(tx, eq(tokens.mediaId, id));
     const deletedBatches = tx.delete(batches).where(eq(batches.mediaId, id)).run().changes;
     tx.delete(media).where(eq(media.id, id)).run();
     return { deletedTokens, deletedBatches, removedFromGroups };

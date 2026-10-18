@@ -40,6 +40,8 @@
 </template>
 
 <script setup lang="ts">
+import { matchesDeleteConfirmation } from '~/utils/deleteConfirmation';
+
 /**
  * Asks before deleting something for good, and only lets the admin go ahead
  * once they typed its name (or for a token, its value): a slip of the mouse
@@ -64,7 +66,7 @@ const toast = useToast();
 const formId = useId();
 const typedText = ref('');
 const pending = ref(false);
-const textMatches = computed(() => typedText.value.trim() === props.confirmText.trim());
+const textMatches = computed(() => matchesDeleteConfirmation(typedText.value, props.confirmText));
 
 // Each opening starts empty, so text typed for one deletion cannot confirm the next.
 watch(open, (isOpen) => {

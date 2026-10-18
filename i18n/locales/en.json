@@ -115,6 +115,7 @@
   "token_deleted_with_batch": "Token \"{name}\" was deleted, and with it the now empty batch \"{batchName}\".",
   "delete_confirm_type_name": "Type \"{name}\" to confirm",
   "delete_failed": "Deleting failed. Please reload the page and try again.",
+  "delete_already_gone": "It was already deleted, e.g. in another tab.",
   "token_usage_limit": "Usage limit (optional)",
   "token_expires_at": "Expires at (optional)",
   "token_validity_start": "Validity starts",

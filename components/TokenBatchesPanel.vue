@@ -723,29 +723,53 @@ function openDeleteModal(next: Deletion) {
   showDeleteModal.value = true;
 }
 
+/**
+ * Sends a deletion and brings the lists up to date whatever came of it. Gone
+ * already, e.g. deleted in another tab, is what the admin wanted anyway; any
+ * other failure is left to the dialog to report.
+ */
+async function runDeletion(request: () => Promise<void>) {
+  try {
+    await request();
+  }
+  catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 404)
+      throw error;
+    toast.add({ title: t('delete_already_gone'), color: 'info' });
+  }
+  finally {
+    // Settled rather than awaited plainly, so a refresh failing after the
+    // deletion went through cannot report the deletion as failed.
+    await Promise.allSettled([refreshBatches(), refreshTokens()]);
+  }
+}
+
 function openBatchDeleteModal(batchId: string) {
   const batch = batches.value?.find(b => b.id === batchId);
   if (!batch)
     return;
   // A batch from before names were required is listed by its id, so that is what to type.
-  const name = batch.name || batch.id;
+  const name = batch.name.trim() || batch.id;
   openDeleteModal({
     title: t('batch_delete_title'),
     message: t('batch_delete_confirm', { name, count: batch.count }, batch.count),
     hint: t('batch_delete_confirm_hint'),
     confirmText: name,
     confirmLabel: t('batch_delete'),
-    action: async () => {
+    action: () => runDeletion(async () => {
       await $fetch(`/api/batches/${batchId}`, { method: 'DELETE' });
       toast.add({ title: t('batch_deleted', { name }), color: 'success' });
       openBatchIds.value = openBatchIds.value.filter(id => id !== batchId);
-      await Promise.all([refreshBatches(), refreshTokens()]);
-    },
+    }),
   });
 }
 
 function openTokenDeleteModal(token: TokenRow) {
   const name = token.name || token.token;
+  // Looked up now, while the batch is still in the list: once the deletion
+  // took it along, there is nothing left to name it by.
+  const batch = batches.value?.find(b => b.id === token.batchId);
+  const batchName = batch?.name.trim() || token.batchId;
   openDeleteModal({
     title: t('token_delete_title'),
     message: t('token_delete_confirm', { name }),
@@ -754,18 +778,16 @@ function openTokenDeleteModal(token: TokenRow) {
     // the one meant apart from its namesakes in other batches.
     confirmText: token.token,
     confirmLabel: t('token_delete'),
-    action: async () => {
+    action: () => runDeletion(async () => {
       const { deletedBatch } = await $fetch(`/api/tokens/${token.id}`, { method: 'DELETE' });
       if (deletedBatch && token.batchId) {
-        const batchName = batches.value?.find(b => b.id === token.batchId)?.name || token.batchId;
         toast.add({ title: t('token_deleted_with_batch', { name, batchName }), color: 'success' });
         openBatchIds.value = openBatchIds.value.filter(id => id !== token.batchId);
       }
       else {
         toast.add({ title: t('token_deleted', { name }), color: 'success' });
       }
-      await Promise.all([refreshBatches(), refreshTokens()]);
-    },
+    }),
   });
 }
 
