@@ -59,6 +59,7 @@ describe('groupMatchingTokensByBatch', () => {
 
 function row(overrides: Partial<TokenRow>): TokenRow {
   return {
+    id: 'token-1',
     token: 'abc',
     name: '1',
     usageCount: 0,
@@ -82,6 +83,25 @@ describe('getBatchSettings', () => {
     const tokens = [
       row({ validFor: { days: 7 }, expiresAt: '2027-01-07T10:00:00.000Z' }),
       row({ validFor: { days: 7 } }),
+    ];
+    expect(getBatchSettings(tokens)).toEqual({ usageLimit: null, expiresAt: null, validFor: { days: 7 } });
+  });
+
+  it('goes by what most tokens share, so one edited on its own does not speak for the batch', () => {
+    const expiresAt = '2027-06-01T10:00:00.000Z';
+    const tokens = [
+      row({ usageLimit: 10, expiresAt: '2030-01-01T00:00:00.000Z' }),
+      row({ usageLimit: 3, expiresAt }),
+      row({ usageLimit: 3, expiresAt }),
+    ];
+    expect(getBatchSettings(tokens)).toEqual({ usageLimit: 3, expiresAt, validFor: null });
+  });
+
+  it('counts first-use tokens with the same duration alike, whether opened or not', () => {
+    const tokens = [
+      row({ expiresAt: '2027-06-01T10:00:00.000Z' }),
+      row({ validFor: { days: 7 }, expiresAt: '2027-01-07T10:00:00.000Z' }),
+      row({ validFor: { days: 7 }, expiresAt: '2027-01-09T10:00:00.000Z' }),
     ];
     expect(getBatchSettings(tokens)).toEqual({ usageLimit: null, expiresAt: null, validFor: { days: 7 } });
   });

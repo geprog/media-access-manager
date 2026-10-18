@@ -3,6 +3,7 @@ import { getEditedValidity } from './accessWindow';
 
 /** A token as the media details page lists it. */
 export interface TokenRow {
+  id: string
   token: string
   name: string
   usageCount: number
@@ -59,20 +60,36 @@ export function groupMatchingTokensByBatch<Token extends FilterableToken>(
 export type BatchSettings = Pick<TokenRow, 'usageLimit' | 'expiresAt' | 'validFor'>;
 
 /**
- * Reads a batch's settings off its tokens, which all share them. A first-use
- * token that was already opened carries its own expiry date, which is not a
- * setting of the batch, so only the duration is reported for those.
+ * Reads a batch's settings off its tokens. They are created alike, but single
+ * tokens can be edited afterwards, so the settings most of them share speak
+ * for the batch (the earliest token on a tie). A first-use token that was
+ * already opened carries its own expiry date, which is not a setting of the
+ * batch, so only the duration is reported for those.
  */
 export function getBatchSettings(tokens: TokenRow[]): BatchSettings {
-  const first = tokens[0];
-  if (!first) {
-    return { usageLimit: null, expiresAt: null, validFor: null };
+  const counts = new Map<string, { settings: BatchSettings, count: number }>();
+  for (const token of tokens) {
+    const settings: BatchSettings = {
+      usageLimit: token.usageLimit,
+      expiresAt: token.validFor ? null : token.expiresAt,
+      validFor: token.validFor,
+    };
+    const key = JSON.stringify(settings);
+    const entry = counts.get(key);
+    if (entry) {
+      entry.count++;
+    }
+    else {
+      counts.set(key, { settings, count: 1 });
+    }
   }
-  return {
-    usageLimit: first.usageLimit,
-    expiresAt: first.validFor ? null : first.expiresAt,
-    validFor: first.validFor,
-  };
+  let best: { settings: BatchSettings, count: number } | undefined;
+  for (const entry of counts.values()) {
+    if (!best || entry.count > best.count) {
+      best = entry;
+    }
+  }
+  return best?.settings ?? { usageLimit: null, expiresAt: null, validFor: null };
 }
 
 /** What a new validity would do to a batch's tokens that the admin may not expect. */

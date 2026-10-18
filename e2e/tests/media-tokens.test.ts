@@ -231,6 +231,50 @@ test.describe('Media and Tokens', () => {
     }
   });
 
+  test('edits the settings of a single token', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 3, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(3);
+    const edited = rows.first();
+    const tokenValue = await edited.locator('code').textContent();
+
+    await edited.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    // A token has no name of its own to change, only its settings.
+    await expect(dialog.getByLabel('Batch name')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('2');
+
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    const editedRow = rows.filter({ hasText: tokenValue! });
+    await expect(editedRow).toContainText('0 / 5');
+    await expect(editedRow).toContainText('14 days after first use');
+    // The rest of the batch keeps what it had.
+    const otherRows = rows.filter({ hasNotText: tokenValue! });
+    await expect(otherRows).toHaveCount(2);
+    for (const row of await otherRows.all()) {
+      await expect(row).toContainText('0 / 2');
+      await expect(row).not.toContainText('after first use');
+    }
+
+    // The batch still reports what most of its tokens share.
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('2');
+  });
+
   test('asks before an edit expires tokens already handed out', async ({ page }, testInfo) => {
     await login(page);
 
