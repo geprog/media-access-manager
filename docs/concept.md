@@ -139,9 +139,11 @@ admin to confirm.
 **Editing a single token** – usage limit and validity of one token can be
 changed the same way (`PATCH /api/tokens/:id`), with the same rules and the
 same confirmation, e.g. to give one visitor more time than the rest of the
-batch. The batch edit dialog prefills the settings most of its tokens share, so
-a single edited token does not speak for its batch; a later batch edit that
-changes a setting applies it to every token again, the edited one included.
+batch. When the tokens of a batch no longer share a setting, the batch edit
+dialog warns about it and leaves that field empty (for the validity: "Keep each
+token's own"). As long as it stays empty, every token keeps its own value;
+filling it in applies the new value to every token of the batch again, the
+edited ones included.
 
 **Schema** (simplified):
 

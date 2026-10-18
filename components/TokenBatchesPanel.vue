@@ -193,6 +193,28 @@
             <p v-if="isEditing" class="mb-4 text-sm text-muted">
               {{ editingToken ? $t('token_edit_hint') : $t('batch_edit_hint') }}
             </p>
+            <UAlert
+              v-if="differingSettings"
+              class="mb-4"
+              color="warning"
+              variant="subtle"
+              icon="i-heroicons-adjustments-horizontal"
+              :title="$t('batch_differing_title')"
+            >
+              <template #description>
+                <ul class="list-disc ps-4">
+                  <li v-if="differingSettings.usageLimit">
+                    {{ $t('batch_differing_usage_limit') }}
+                  </li>
+                  <li v-if="differingSettings.validity">
+                    {{ $t('batch_differing_validity') }}
+                  </li>
+                </ul>
+                <p class="mt-2">
+                  {{ $t('batch_differing_hint') }}
+                </p>
+              </template>
+            </UAlert>
             <UFormField v-if="!editingToken" :label="$t('batch_name')">
               <UInput v-model="batchForm.name" :placeholder="$t('batch_name_placeholder')" required />
             </UFormField>
@@ -202,6 +224,7 @@
             <UFormField
               :label="$t('token_usage_limit')"
               :hint="groupId ? $t('token_usage_limit_per_media_hint') : undefined"
+              :help="differingSettings?.usageLimit ? $t('batch_differing_usage_limit_help') : undefined"
             >
               <UInput v-model.number="batchForm.usageLimit" type="number" min="1" />
             </UFormField>
@@ -215,7 +238,7 @@
               <UInput v-model="batchForm.expiresAt" type="datetime-local" />
             </UFormField>
             <UFormField
-              v-else
+              v-else-if="batchForm.validityStart === 'first_use'"
               :label="$t('token_valid_for')"
               :hint="$t('token_valid_for_hint')"
               :help="editingToken ? $t('token_edit_first_use_hint') : editingBatchId ? $t('batch_edit_first_use_hint') : undefined"
@@ -311,9 +334,11 @@ function emptyBatchForm() {
     count: 50,
     usageLimit: null as number | null,
     /** Whether the tokens count down from now or from each one's first use. */
-    validityStart: 'immediately' as 'immediately' | 'first_use',
+    /** `keep` leaves each token's own validity, offered while the tokens of a batch differ in it. */
+    validityStart: 'immediately' as 'immediately' | 'first_use' | 'keep',
     expiresAt: '',
-    validForValue: 7,
+    /** Empty while the tokens of a batch differ in their validity. */
+    validForValue: 7 as number | null,
     validForUnit: 'days' as ValidityUnit,
   };
 }
@@ -326,6 +351,11 @@ const editingBatchId = ref<string | null>(null);
 /** The single token the dialog edits instead of a whole batch. */
 const editingToken = ref<TokenRow | null>(null);
 const isEditing = computed(() => editingBatchId.value !== null || editingToken.value !== null);
+/**
+ * Settings the tokens of the edited batch do not all share, `null` when they
+ * share all of them. Those fields open empty and are only sent once filled in.
+ */
+const differingSettings = ref<BatchSettings['differing'] | null>(null);
 /** The form as it was opened for editing, so only what the admin changed is sent. */
 let initialEditForm: BatchForm | null = null;
 /** What an edit would do to tokens already handed out that the admin may not expect. */
@@ -348,6 +378,7 @@ watch(batchForm, () => {
 function openCreateModal() {
   editingBatchId.value = null;
   editingToken.value = null;
+  differingSettings.value = null;
   batchForm.value = emptyBatchForm();
   showBatchModal.value = true;
 }
@@ -363,7 +394,7 @@ function editFormFor(name: string, settings: BatchSettings): BatchForm {
     ...emptyBatchForm(),
     name,
     usageLimit: settings.usageLimit,
-    validityStart: settings.validFor ? 'first_use' : 'immediately',
+    validityStart: settings.differing.validity ? 'keep' : settings.validFor ? 'first_use' : 'immediately',
     // The date input works in the admin's local time, without seconds.
     expiresAt: settings.expiresAt ? format(new Date(settings.expiresAt), 'yyyy-MM-dd\'T\'HH:mm') : '',
   };
@@ -371,6 +402,9 @@ function editFormFor(name: string, settings: BatchSettings): BatchForm {
   if (unit && value) {
     form.validForUnit = unit as ValidityUnit;
     form.validForValue = value;
+  }
+  else if (settings.differing.validity) {
+    form.validForValue = null;
   }
   return form;
 }
@@ -386,21 +420,29 @@ function openEditModal(batchId: string) {
   const batch = batches.value?.find(b => b.id === batchId);
   if (!batch)
     return;
+  const settings = getBatchSettings(batchTokens(batchId));
   editingToken.value = null;
   editingBatchId.value = batchId;
-  showEditForm(editFormFor(batch.name, getBatchSettings(batchTokens(batchId))));
+  differingSettings.value = settings.differing.usageLimit || settings.differing.validity ? settings.differing : null;
+  showEditForm(editFormFor(batch.name, settings));
 }
 
 function openTokenEditModal(token: TokenRow) {
   editingBatchId.value = null;
   editingToken.value = token;
+  differingSettings.value = null;
   showEditForm(editFormFor(token.name, getBatchSettings([token])));
 }
 
-/** The validity the form describes, or `null` while the first-use duration is not a positive whole number. */
+/**
+ * The validity the form describes, or `null` while it keeps each token's own
+ * or the first-use duration is not a positive whole number.
+ */
 function validityOf(form: BatchForm): TokenValidity | null {
+  if (form.validityStart === 'keep')
+    return null;
   if (form.validityStart === 'first_use') {
-    if (!Number.isInteger(form.validForValue) || form.validForValue < 1)
+    if (form.validForValue == null || !Number.isInteger(form.validForValue) || form.validForValue < 1)
       return null;
     return { expiresAt: null, validFor: { [form.validForUnit]: form.validForValue } };
   }
@@ -423,6 +465,7 @@ function usageLimitOf(form: BatchForm): number | null {
 }
 
 const validityStartOptions = computed(() => [
+  ...(differingSettings.value?.validity ? [{ label: t('batch_differing_validity_keep'), value: 'keep' }] : []),
   { label: t('token_validity_start_immediately'), value: 'immediately' },
   { label: t('token_validity_start_first_use'), value: 'first_use' },
 ]);
@@ -679,7 +722,8 @@ async function handleCreateBatch() {
 /**
  * Saves the batch or single token the dialog edits. Sends only what differs
  * from the opened form: re-sending an untouched validity would needlessly
- * rewrite the expiry of every token of the batch. A change that would expire,
+ * rewrite the expiry of every token of the batch, and a setting its tokens do
+ * not share stays untouched as long as its field is left empty. A change that would expire,
  * overwrite or use up tokens already handed out is held back until the admin
  * saves a second time to confirm it.
  */
@@ -690,7 +734,9 @@ async function handleUpdate() {
   const initialValidity = initial && validityOf(initial);
   const token = editingToken.value;
   const batchId = editingBatchId.value;
-  if ((!token && !form.name.trim()) || !validity || !initial)
+  // Each token keeping its own validity is the one case without a validity to send.
+  const keepsValidity = form.validityStart === 'keep';
+  if ((!token && !form.name.trim()) || (!validity && !keepsValidity) || !initial)
     return;
   const affected = token ? [token] : batchTokens(batchId!);
   const body: Record<string, unknown> = {};
@@ -702,8 +748,8 @@ async function handleUpdate() {
     body.usageLimit = usageLimit;
     conflicts.usedUp = getUsageLimitConflicts(affected, usageLimit);
   }
-  const newValidity = validityBody(validity);
-  if (JSON.stringify(newValidity) !== JSON.stringify(initialValidity && validityBody(initialValidity))) {
+  const newValidity = validity && validityBody(validity);
+  if (validity && JSON.stringify(newValidity) !== JSON.stringify(initialValidity && validityBody(initialValidity))) {
     Object.assign(body, newValidity);
     Object.assign(conflicts, getValidityConflicts(affected, validity));
   }

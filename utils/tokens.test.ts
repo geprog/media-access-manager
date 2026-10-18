@@ -73,10 +73,12 @@ function row(overrides: Partial<TokenRow>): TokenRow {
 }
 
 describe('getBatchSettings', () => {
+  const SHARED = { usageLimit: false, validity: false };
+
   it('reads a fixed expiry date and the usage limit off the batch', () => {
     const expiresAt = '2027-06-01T10:00:00.000Z';
     expect(getBatchSettings([row({ usageLimit: 3, expiresAt }), row({ usageLimit: 3, expiresAt })]))
-      .toEqual({ usageLimit: 3, expiresAt, validFor: null });
+      .toEqual({ usageLimit: 3, expiresAt, validFor: null, differing: SHARED });
   });
 
   it('reports the first-use duration rather than the expiry of a token already opened', () => {
@@ -84,30 +86,40 @@ describe('getBatchSettings', () => {
       row({ validFor: { days: 7 }, expiresAt: '2027-01-07T10:00:00.000Z' }),
       row({ validFor: { days: 7 } }),
     ];
-    expect(getBatchSettings(tokens)).toEqual({ usageLimit: null, expiresAt: null, validFor: { days: 7 } });
+    expect(getBatchSettings(tokens))
+      .toEqual({ usageLimit: null, expiresAt: null, validFor: { days: 7 }, differing: SHARED });
   });
 
-  it('goes by what most tokens share, so one edited on its own does not speak for the batch', () => {
+  it('leaves out a usage limit the tokens do not share', () => {
     const expiresAt = '2027-06-01T10:00:00.000Z';
-    const tokens = [
-      row({ usageLimit: 10, expiresAt: '2030-01-01T00:00:00.000Z' }),
-      row({ usageLimit: 3, expiresAt }),
-      row({ usageLimit: 3, expiresAt }),
-    ];
-    expect(getBatchSettings(tokens)).toEqual({ usageLimit: 3, expiresAt, validFor: null });
+    const tokens = [row({ usageLimit: 10, expiresAt }), row({ usageLimit: 3, expiresAt }), row({ usageLimit: 3, expiresAt })];
+    expect(getBatchSettings(tokens))
+      .toEqual({ usageLimit: null, expiresAt, validFor: null, differing: { usageLimit: true, validity: false } });
   });
 
-  it('counts first-use tokens with the same duration alike, whether opened or not', () => {
+  it('tells a lifted limit on one token apart from a shared one', () => {
+    const tokens = [row({ usageLimit: null }), row({ usageLimit: 3 })];
+    expect(getBatchSettings(tokens).differing.usageLimit).toBe(true);
+  });
+
+  it('leaves out a validity the tokens do not share', () => {
     const tokens = [
-      row({ expiresAt: '2027-06-01T10:00:00.000Z' }),
-      row({ validFor: { days: 7 }, expiresAt: '2027-01-07T10:00:00.000Z' }),
-      row({ validFor: { days: 7 }, expiresAt: '2027-01-09T10:00:00.000Z' }),
+      row({ usageLimit: 3, expiresAt: '2027-06-01T10:00:00.000Z' }),
+      row({ usageLimit: 3, validFor: { days: 7 } }),
     ];
-    expect(getBatchSettings(tokens)).toEqual({ usageLimit: null, expiresAt: null, validFor: { days: 7 } });
+    expect(getBatchSettings(tokens))
+      .toEqual({ usageLimit: 3, expiresAt: null, validFor: null, differing: { usageLimit: false, validity: true } });
+  });
+
+  it('finds different fixed expiry dates and different durations', () => {
+    expect(getBatchSettings([row({ expiresAt: '2027-06-01T10:00:00.000Z' }), row({ expiresAt: null })]).differing.validity)
+      .toBe(true);
+    expect(getBatchSettings([row({ validFor: { days: 7 } }), row({ validFor: { weeks: 1 } })]).differing.validity)
+      .toBe(true);
   });
 
   it('has nothing to report for a batch without tokens', () => {
-    expect(getBatchSettings([])).toEqual({ usageLimit: null, expiresAt: null, validFor: null });
+    expect(getBatchSettings([])).toEqual({ usageLimit: null, expiresAt: null, validFor: null, differing: SHARED });
   });
 });
 
