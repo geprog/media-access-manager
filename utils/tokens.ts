@@ -3,6 +3,7 @@ import { getEditedValidity } from './accessWindow';
 
 /** A token as the media details page lists it. */
 export interface TokenRow {
+  id: string
   token: string
   name: string
   usageCount: number
@@ -55,23 +56,39 @@ export function groupMatchingTokensByBatch<Token extends FilterableToken>(
   return grouped;
 }
 
-/** What a batch's tokens were created with, for prefilling its edit form. */
-export type BatchSettings = Pick<TokenRow, 'usageLimit' | 'expiresAt' | 'validFor'>;
+/** What a batch's tokens share, for prefilling its edit form. */
+export interface BatchSettings extends Pick<TokenRow, 'usageLimit' | 'expiresAt' | 'validFor'> {
+  /**
+   * Settings the tokens do not all share, because single tokens were edited on
+   * their own. Their values above are left empty rather than picking one
+   * token's to stand for the batch.
+   */
+  differing: { usageLimit: boolean, validity: boolean }
+}
 
 /**
- * Reads a batch's settings off its tokens, which all share them. A first-use
- * token that was already opened carries its own expiry date, which is not a
- * setting of the batch, so only the duration is reported for those.
+ * Reads a batch's settings off its tokens. A first-use token that was already
+ * opened carries its own expiry date, which is not a setting of the batch, so
+ * only the duration is compared and reported for those.
  */
 export function getBatchSettings(tokens: TokenRow[]): BatchSettings {
+  const validityOf = (token: TokenRow) => ({
+    expiresAt: token.validFor ? null : token.expiresAt,
+    validFor: token.validFor,
+  });
   const first = tokens[0];
   if (!first) {
-    return { usageLimit: null, expiresAt: null, validFor: null };
+    return { usageLimit: null, expiresAt: null, validFor: null, differing: { usageLimit: false, validity: false } };
   }
+  const firstValidity = JSON.stringify(validityOf(first));
+  const differing = {
+    usageLimit: tokens.some(token => token.usageLimit !== first.usageLimit),
+    validity: tokens.some(token => JSON.stringify(validityOf(token)) !== firstValidity),
+  };
   return {
-    usageLimit: first.usageLimit,
-    expiresAt: first.validFor ? null : first.expiresAt,
-    validFor: first.validFor,
+    usageLimit: differing.usageLimit ? null : first.usageLimit,
+    ...(differing.validity ? { expiresAt: null, validFor: null } : validityOf(first)),
+    differing,
   };
 }
 

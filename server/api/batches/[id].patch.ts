@@ -1,6 +1,6 @@
 import type { BatchChanges } from '../../services/tokenService';
-import { parseValidityDuration } from '~/utils/accessWindow';
 import { updateBatch } from '../../services/tokenService';
+import { parseTokenSettingsChanges } from '../../utils/tokenSettings';
 
 /**
  * Changes a batch and the settings all its tokens share. Only the fields sent
@@ -12,13 +12,12 @@ export default defineEventHandler(async (event) => {
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
-  const body = await readBody<{
-    name?: string
-    usageLimit?: number | null
-    expiresAt?: string | null
-    validFor?: unknown
-  }>(event);
-  const changes: BatchChanges = {};
+  const body = await readBody<{ name?: string } | undefined>(event);
+  const settings = parseTokenSettingsChanges(body);
+  if (!settings) {
+    throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
+  }
+  const changes: BatchChanges = { ...settings };
 
   if (body?.name !== undefined) {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
@@ -26,28 +25,6 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
     }
     changes.name = name;
-  }
-
-  if (body?.usageLimit !== undefined) {
-    if (body.usageLimit !== null && (!Number.isInteger(body.usageLimit) || body.usageLimit < 1)) {
-      throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
-    }
-    changes.usageLimit = body.usageLimit;
-  }
-
-  if (body?.validFor != null) {
-    const validFor = parseValidityDuration(body.validFor);
-    if (!validFor || body.expiresAt) {
-      throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
-    }
-    changes.validity = { expiresAt: null, validFor };
-  }
-  else if (body?.expiresAt !== undefined) {
-    const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
-    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
-      throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
-    }
-    changes.validity = { expiresAt, validFor: null };
   }
 
   const updated = await updateBatch(id, changes);

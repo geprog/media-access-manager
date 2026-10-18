@@ -136,6 +136,16 @@ the usage limit to or below what tokens have already used (for a group token:
 on any one of its media), the dialog lists how many are affected and asks the
 admin to confirm.
 
+**Editing a single token** – usage limit and validity of one token can be
+changed the same way (`PATCH /api/tokens/:id`), with the same rules and the
+same confirmation, e.g. to give one visitor more time than the rest of the
+batch. When the tokens of a batch no longer share a setting, the batch edit
+dialog warns about it and leaves that field empty (for the validity: "Keep each
+token's own"). As long as it stays empty, every token keeps its own value;
+filling it in applies the new value to every token of the batch again, the
+edited ones included. Since an empty usage limit then means "keep", a "Lift the
+limit of every token" checkbox removes the limit from all of them.
+
 **Schema** (simplified):
 
 - `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for` (nullable JSON), `first_used_at` (nullable), `usage_limit`, `usage_count`, `created_at`

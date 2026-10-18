@@ -1,13 +1,15 @@
 import type { Media, MediaGroup, Token } from '../db/schema';
 import type { GroupMediaAccess } from '../utils/groupAccess';
+import type { TokenSettingsChanges } from '../utils/tokenSettings';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
-import type { TokenValidity, ValidityDuration } from '~/utils/accessWindow';
+import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
 import { and, eq, getTableColumns, sql } from 'drizzle-orm';
 import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
 
@@ -351,11 +353,8 @@ export async function listBatchesByGroupId(groupId: string) {
   return db.select().from(batches).where(eq(batches.groupId, groupId));
 }
 
-export interface BatchChanges {
+export interface BatchChanges extends TokenSettingsChanges {
   name?: string
-  /** `null` lifts the limit. */
-  usageLimit?: number | null
-  validity?: TokenValidity
 }
 
 /**
@@ -390,5 +389,26 @@ export async function updateBatch(batchId: string, changes: BatchChanges) {
       }
     }
     return tx.select().from(batches).where(eq(batches.id, batchId)).get() ?? null;
+  });
+}
+
+/**
+ * Changes the usage limit and validity of one token, the same way a batch edit
+ * changes each of its tokens: views already spent are kept, and a new first-use
+ * duration counts from the token's first view. `null` when there is no such
+ * token.
+ */
+export async function updateToken(tokenId: string, changes: TokenSettingsChanges) {
+  const db = useDb();
+  return db.transaction((tx) => {
+    const tokenRow = tx.select().from(tokens).where(eq(tokens.id, tokenId)).get();
+    if (!tokenRow) {
+      return null;
+    }
+    const columns = getTokenSettingsColumns(tokenRow, changes);
+    if (Object.keys(columns).length === 0) {
+      return tokenRow;
+    }
+    return tx.update(tokens).set(columns).where(eq(tokens.id, tokenId)).returning().get() ?? null;
   });
 }

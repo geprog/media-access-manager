@@ -187,24 +187,54 @@
       <template #content>
         <UCard>
           <template #header>
-            {{ editingBatchId ? $t('batch_edit') : $t('create_new_tokens') }}
+            {{ dialogTitle }}
           </template>
           <form @submit.prevent="handleSubmitBatch">
-            <p v-if="editingBatchId" class="mb-4 text-sm text-muted">
-              {{ $t('batch_edit_hint') }}
+            <p v-if="isEditing" class="mb-4 text-sm text-muted">
+              {{ editingToken ? $t('token_edit_hint') : $t('batch_edit_hint') }}
             </p>
-            <UFormField :label="$t('batch_name')">
+            <UAlert
+              v-if="differingSettings"
+              class="mb-4"
+              color="warning"
+              variant="subtle"
+              icon="i-heroicons-adjustments-horizontal"
+              :title="$t('batch_differing_title')"
+            >
+              <template #description>
+                <ul class="list-disc ps-4">
+                  <li v-if="differingSettings.usageLimit">
+                    {{ $t('batch_differing_usage_limit') }}
+                  </li>
+                  <li v-if="differingSettings.validity">
+                    {{ $t('batch_differing_validity') }}
+                  </li>
+                </ul>
+                <p class="mt-2">
+                  {{ $t('batch_differing_hint') }}
+                </p>
+              </template>
+            </UAlert>
+            <UFormField v-if="!editingToken" :label="$t('batch_name')">
               <UInput v-model="batchForm.name" :placeholder="$t('batch_name_placeholder')" required />
             </UFormField>
-            <UFormField v-if="!editingBatchId" :label="$t('batch_count')">
+            <UFormField v-if="!isEditing" :label="$t('batch_count')">
               <UInput v-model.number="batchForm.count" type="number" min="1" max="500" :placeholder="$t('batch_count_placeholder')" />
             </UFormField>
             <UFormField
               :label="$t('token_usage_limit')"
               :hint="groupId ? $t('token_usage_limit_per_media_hint') : undefined"
+              :help="differingSettings?.usageLimit ? $t('batch_differing_usage_limit_help') : undefined"
             >
-              <UInput v-model.number="batchForm.usageLimit" type="number" min="1" />
+              <UInput v-model.number="batchForm.usageLimit" type="number" min="1" :disabled="batchForm.liftUsageLimit" />
             </UFormField>
+            <!-- Outside the field, which would hand the checkbox its label and id too. -->
+            <UCheckbox
+              v-if="differingSettings?.usageLimit"
+              v-model="batchForm.liftUsageLimit"
+              class="mt-2"
+              :label="$t('batch_differing_usage_limit_lift')"
+            />
             <UFormField :label="$t('token_validity_start')">
               <URadioGroup
                 v-model="batchForm.validityStart"
@@ -215,10 +245,10 @@
               <UInput v-model="batchForm.expiresAt" type="datetime-local" />
             </UFormField>
             <UFormField
-              v-else
+              v-else-if="batchForm.validityStart === 'first_use'"
               :label="$t('token_valid_for')"
               :hint="$t('token_valid_for_hint')"
-              :help="editingBatchId ? $t('batch_edit_first_use_hint') : undefined"
+              :help="validForHelp"
             >
               <div class="flex gap-2">
                 <UInput
@@ -263,7 +293,7 @@
               class="mt-4"
               :color="editConflicts ? 'warning' : 'primary'"
             >
-              {{ editConflicts ? $t('batch_save_anyway') : editingBatchId ? $t('batch_save') : $t('create_new_tokens') }}
+              {{ editConflicts ? $t('batch_save_anyway') : isEditing ? $t('save') : $t('create_new_tokens') }}
             </UButton>
           </form>
         </UCard>
@@ -276,7 +306,7 @@
 import type { TableColumn } from '@nuxt/ui';
 import type { TokenValidity, ValidityDuration, ValidityUnit } from '~/utils/accessWindow';
 import type { LabelPosition, QRGridSpacing } from '~/utils/qrGrid';
-import type { TokenRow, ValidityConflicts } from '~/utils/tokens';
+import type { BatchSettings, TokenRow, ValidityConflicts } from '~/utils/tokens';
 import { format } from 'date-fns';
 import { h, resolveComponent } from 'vue';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
@@ -303,6 +333,8 @@ const { data: batches, refresh: refreshBatches } = useFetch(() => `/api/batches?
 const { data: tokens, status: tokensStatus, refresh: refreshTokens } = useFetch(() => `/api/tokens?${targetQuery.value}`);
 
 const showBatchModal = ref(false);
+/** The first-use duration a new batch starts with, in `validForUnit`s. */
+const DEFAULT_VALID_FOR_VALUE = 7;
 const showExportModal = ref(false);
 const exportBatchId = ref<string | null>(null);
 function emptyBatchForm() {
@@ -310,10 +342,20 @@ function emptyBatchForm() {
     name: '',
     count: 50,
     usageLimit: null as number | null,
-    /** Whether the tokens count down from now or from each one's first use. */
-    validityStart: 'immediately' as 'immediately' | 'first_use',
+    /**
+     * Lifts the limit of every token of a batch whose tokens differ in it, where
+     * an empty usage limit keeps each token's own instead.
+     */
+    liftUsageLimit: false,
+    /**
+     * Whether the tokens count down from now or from each one's first use.
+     * `keep` leaves each token's own validity, offered while the tokens of a
+     * batch differ in it.
+     */
+    validityStart: 'immediately' as 'immediately' | 'first_use' | 'keep',
     expiresAt: '',
-    validForValue: 7,
+    /** Empty while the tokens of a batch keep their own differing validity. */
+    validForValue: DEFAULT_VALID_FOR_VALUE as number | null,
     validForUnit: 'days' as ValidityUnit,
   };
 }
@@ -323,6 +365,14 @@ type BatchForm = ReturnType<typeof emptyBatchForm>;
 const batchForm = ref(emptyBatchForm());
 /** The batch the dialog edits, `null` while it creates a new one. */
 const editingBatchId = ref<string | null>(null);
+/** The single token the dialog edits instead of a whole batch. */
+const editingToken = ref<TokenRow | null>(null);
+const isEditing = computed(() => editingBatchId.value !== null || editingToken.value !== null);
+/**
+ * Settings the tokens of the edited batch do not all share, `null` when they
+ * share all of them. Those fields open empty and are only sent once filled in.
+ */
+const differingSettings = ref<BatchSettings['differing'] | null>(null);
 /** The form as it was opened for editing, so only what the admin changed is sent. */
 let initialEditForm: BatchForm | null = null;
 /** What an edit would do to tokens already handed out that the admin may not expect. */
@@ -342,8 +392,29 @@ watch(batchForm, () => {
   editConflicts.value = null;
 }, { deep: true });
 
+// Moving off "keep each token's own", the duration field opens with the
+// default instead of empty.
+watch(() => batchForm.value.validityStart, (validityStart) => {
+  if (validityStart === 'first_use' && batchForm.value.validForValue == null)
+    batchForm.value.validForValue = DEFAULT_VALID_FOR_VALUE;
+});
+
+const dialogTitle = computed(() => {
+  if (editingToken.value)
+    return t('token_edit_title', { name: editingToken.value.name });
+  return editingBatchId.value ? t('batch_edit') : t('create_new_tokens');
+});
+
+const validForHelp = computed(() => {
+  if (editingToken.value)
+    return t('token_edit_first_use_hint');
+  return editingBatchId.value ? t('batch_edit_first_use_hint') : undefined;
+});
+
 function openCreateModal() {
   editingBatchId.value = null;
+  editingToken.value = null;
+  differingSettings.value = null;
   batchForm.value = emptyBatchForm();
   showBatchModal.value = true;
 }
@@ -353,16 +424,13 @@ function batchTokens(batchId: string): TokenRow[] {
   return (tokens.value ?? []).filter(row => row.batchId === batchId);
 }
 
-function openEditModal(batchId: string) {
-  const batch = batches.value?.find(b => b.id === batchId);
-  if (!batch)
-    return;
-  const settings = getBatchSettings(batchTokens(batchId));
+/** The edit form prefilled with what the batch or token has now. */
+function editFormFor(name: string, settings: BatchSettings): BatchForm {
   const form: BatchForm = {
     ...emptyBatchForm(),
-    name: batch.name,
+    name,
     usageLimit: settings.usageLimit,
-    validityStart: settings.validFor ? 'first_use' : 'immediately',
+    validityStart: settings.differing.validity ? 'keep' : settings.validFor ? 'first_use' : 'immediately',
     // The date input works in the admin's local time, without seconds.
     expiresAt: settings.expiresAt ? format(new Date(settings.expiresAt), 'yyyy-MM-dd\'T\'HH:mm') : '',
   };
@@ -371,17 +439,46 @@ function openEditModal(batchId: string) {
     form.validForUnit = unit as ValidityUnit;
     form.validForValue = value;
   }
+  else if (settings.differing.validity) {
+    form.validForValue = null;
+  }
+  return form;
+}
+
+function showEditForm(form: BatchForm) {
   initialEditForm = structuredClone(form);
   batchForm.value = form;
   editConflicts.value = null;
-  editingBatchId.value = batchId;
   showBatchModal.value = true;
 }
 
-/** The validity the form describes, or `null` while the first-use duration is not a positive whole number. */
+function openEditModal(batchId: string) {
+  const batch = batches.value?.find(b => b.id === batchId);
+  if (!batch)
+    return;
+  const settings = getBatchSettings(batchTokens(batchId));
+  editingToken.value = null;
+  editingBatchId.value = batchId;
+  differingSettings.value = settings.differing.usageLimit || settings.differing.validity ? settings.differing : null;
+  showEditForm(editFormFor(batch.name, settings));
+}
+
+function openTokenEditModal(token: TokenRow) {
+  editingBatchId.value = null;
+  editingToken.value = token;
+  differingSettings.value = null;
+  showEditForm(editFormFor(token.name, getBatchSettings([token])));
+}
+
+/**
+ * The validity the form describes, or `null` while it keeps each token's own
+ * or the first-use duration is not a positive whole number.
+ */
 function validityOf(form: BatchForm): TokenValidity | null {
+  if (form.validityStart === 'keep')
+    return null;
   if (form.validityStart === 'first_use') {
-    if (!Number.isInteger(form.validForValue) || form.validForValue < 1)
+    if (form.validForValue == null || !Number.isInteger(form.validForValue) || form.validForValue < 1)
       return null;
     return { expiresAt: null, validFor: { [form.validForUnit]: form.validForValue } };
   }
@@ -400,10 +497,11 @@ function validityBody(validity: TokenValidity): { validFor: ValidityDuration } |
 
 /** An emptied number input holds `''` rather than `null`. */
 function usageLimitOf(form: BatchForm): number | null {
-  return form.usageLimit || null;
+  return form.liftUsageLimit ? null : form.usageLimit || null;
 }
 
 const validityStartOptions = computed(() => [
+  ...(differingSettings.value?.validity ? [{ label: t('batch_differing_validity_keep'), value: 'keep' }] : []),
   { label: t('token_validity_start_immediately'), value: 'immediately' },
   { label: t('token_validity_start_first_use'), value: 'first_use' },
 ]);
@@ -611,18 +709,27 @@ const tokenColumns: TableColumn<TokenRow>[] = [
     header: '',
     cell: ({ row }) => {
       const token = row.original.token;
-      return h('a', {
-        href: `/${encodeURIComponent(token)}`,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        class: 'inline-flex items-center gap-1 text-sm text-primary hover:underline',
-      }, [h(resolveComponent('UIcon') as any, { name: 'i-heroicons-arrow-top-right-on-square', class: 'size-4' }), t('tokens_open_link')]);
+      return h('div', { class: 'flex items-center justify-end gap-3' }, [
+        h(resolveComponent('UButton') as any, {
+          label: t('token_edit'),
+          size: 'xs',
+          variant: 'ghost',
+          icon: 'i-heroicons-pencil-square',
+          onClick: () => openTokenEditModal(row.original),
+        }),
+        h('a', {
+          href: `/${encodeURIComponent(token)}`,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          class: 'inline-flex items-center gap-1 text-sm text-primary hover:underline',
+        }, [h(resolveComponent('UIcon') as any, { name: 'i-heroicons-arrow-top-right-on-square', class: 'size-4' }), t('tokens_open_link')]),
+      ]);
     },
   },
 ];
 
 function handleSubmitBatch() {
-  return editingBatchId.value ? handleUpdateBatch(editingBatchId.value) : handleCreateBatch();
+  return isEditing.value ? handleUpdate() : handleCreateBatch();
 }
 
 async function handleCreateBatch() {
@@ -649,31 +756,39 @@ async function handleCreateBatch() {
 }
 
 /**
- * Sends only what differs from the opened form: re-sending an untouched
- * validity would needlessly rewrite the expiry of every token of the batch.
- * A change that would expire, overwrite or use up tokens already handed out
- * is held back until the admin saves a second time to confirm it.
+ * Saves the batch or single token the dialog edits. Sends only what differs
+ * from the opened form: re-sending an untouched validity would needlessly
+ * rewrite the expiry of every token of the batch, and a setting its tokens do
+ * not share stays untouched as long as its field is left empty. A change that
+ * would expire, overwrite or use up tokens already handed out is held back
+ * until the admin saves a second time to confirm it.
  */
-async function handleUpdateBatch(batchId: string) {
+async function handleUpdate() {
   const form = batchForm.value;
   const initial = initialEditForm;
   const validity = validityOf(form);
   const initialValidity = initial && validityOf(initial);
-  if (!form.name.trim() || !validity || !initial)
+  const token = editingToken.value;
+  const batchId = editingBatchId.value;
+  // Each token keeping its own validity is the one case without a validity to send.
+  const keepsValidity = form.validityStart === 'keep';
+  const affected = token ? [token] : batchId ? batchTokens(batchId) : null;
+  if (!affected || (!token && !form.name.trim()) || (!validity && !keepsValidity) || !initial)
     return;
   const body: Record<string, unknown> = {};
   const conflicts: BatchEditConflicts = { closed: 0, replaced: 0, usedUp: 0 };
-  if (form.name.trim() !== initial.name)
+  if (!token && form.name.trim() !== initial.name)
     body.name = form.name.trim();
   const usageLimit = usageLimitOf(form);
-  if (usageLimit !== usageLimitOf(initial)) {
+  // Lifting differing limits sends `null` though the field was empty already.
+  if (usageLimit !== usageLimitOf(initial) || form.liftUsageLimit) {
     body.usageLimit = usageLimit;
-    conflicts.usedUp = getUsageLimitConflicts(batchTokens(batchId), usageLimit);
+    conflicts.usedUp = getUsageLimitConflicts(affected, usageLimit);
   }
-  const newValidity = validityBody(validity);
-  if (JSON.stringify(newValidity) !== JSON.stringify(initialValidity && validityBody(initialValidity))) {
+  const newValidity = validity && validityBody(validity);
+  if (validity && JSON.stringify(newValidity) !== JSON.stringify(initialValidity && validityBody(initialValidity))) {
     Object.assign(body, newValidity);
-    Object.assign(conflicts, getValidityConflicts(batchTokens(batchId), validity));
+    Object.assign(conflicts, getValidityConflicts(affected, validity));
   }
   const hasConflicts = conflicts.closed > 0 || conflicts.replaced > 0 || conflicts.usedUp > 0;
   if (hasConflicts && !editConflicts.value) {
@@ -681,13 +796,14 @@ async function handleUpdateBatch(batchId: string) {
     return;
   }
   if (Object.keys(body).length > 0) {
-    await $fetch(`/api/batches/${batchId}`, {
+    await $fetch(token ? `/api/tokens/${token.id}` : `/api/batches/${batchId}`, {
       method: 'PATCH',
       body,
     });
   }
   showBatchModal.value = false;
   editingBatchId.value = null;
+  editingToken.value = null;
   editConflicts.value = null;
   await Promise.all([refreshBatches(), refreshTokens()]);
 }

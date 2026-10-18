@@ -231,6 +231,144 @@ test.describe('Media and Tokens', () => {
     }
   });
 
+  test('edits the settings of a single token', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 3, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(3);
+    const edited = rows.first();
+    const tokenValue = await edited.locator('code').textContent();
+
+    await edited.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    // A token has no name of its own to change, only its settings.
+    await expect(dialog.getByLabel('Batch name')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('2');
+
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    const editedRow = rows.filter({ hasText: tokenValue! });
+    await expect(editedRow).toContainText('0 / 5');
+    await expect(editedRow).toContainText('14 days after first use');
+    // The rest of the batch keeps what it had.
+    const otherRows = rows.filter({ hasNotText: tokenValue! });
+    await expect(otherRows).toHaveCount(2);
+    for (const row of await otherRows.all()) {
+      await expect(row).toContainText('0 / 2');
+      await expect(row).not.toContainText('after first use');
+    }
+  });
+
+  test('leaves settings empty that the tokens of a batch do not share', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    const edited = rows.first();
+    const tokenValue = await edited.locator('code').textContent();
+    const editedRow = rows.filter({ hasText: tokenValue! });
+    const otherRow = rows.filter({ hasNotText: tokenValue! });
+
+    await edited.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByText('Tokens of this batch have different settings')).toBeVisible();
+    await expect(dialog.getByText('The usage limit differs between tokens.')).toBeVisible();
+    await expect(dialog.getByText('The validity differs between tokens.')).toBeVisible();
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('');
+    await expect(dialog.getByRole('radio', { name: 'Keep each token\'s own' })).toBeChecked();
+
+    // Moving off "keep", the duration starts from the default rather than empty.
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await expect(dialog.getByLabel('Valid for')).toHaveValue('7');
+    await dialog.getByRole('radio', { name: 'Keep each token\'s own' }).check();
+
+    // Left empty, every token keeps its own settings.
+    const renamed = `${batchName} renamed`;
+    await dialog.getByLabel('Batch name').fill(renamed);
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button').filter({ hasText: renamed })).toBeVisible();
+    await expect(editedRow).toContainText('0 / 5');
+    await expect(editedRow).toContainText('14 days after first use');
+    await expect(otherRow).toContainText('0 / 2');
+    await expect(otherRow).not.toContainText('after first use');
+
+    // Filled in, a setting applies to every token again.
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await dialog.getByLabel('Usage limit').fill('3');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    await expect(editedRow).toContainText('0 / 3');
+    await expect(otherRow).toContainText('0 / 3');
+    // The validity was still left alone.
+    await expect(editedRow).toContainText('14 days after first use');
+    await expect(otherRow).not.toContainText('after first use');
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByText('The usage limit differs between tokens.')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('3');
+  });
+
+  test('lifts a usage limit the tokens of a batch do not share', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    await rows.first().getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await dialog.getByRole('checkbox', { name: 'Lift the limit of every token' }).check();
+    await expect(dialog.getByLabel('Usage limit')).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    for (const row of await rows.all()) {
+      await expect(row).not.toContainText(' / ');
+    }
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByText('Tokens of this batch have different settings')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('');
+  });
+
   test('asks before an edit expires tokens already handed out', async ({ page }, testInfo) => {
     await login(page);
 
