@@ -1,12 +1,12 @@
-import type { Media, MediaGroup, Token } from '../db/schema';
+import type { Media, MediaGroup, Token, TokenView } from '../db/schema';
 import type { GroupMediaAccess } from '../utils/groupAccess';
 import type { TokenSettingsChanges } from '../utils/tokenSettings';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
-import { and, eq, getTableColumns, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
 import { getEditedValidity } from '~/utils/accessWindow';
-import { batches, tokenMediaUsage, tokens } from '../db/schema';
+import { batches, media, mediaGroups, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
@@ -107,18 +107,40 @@ export function denialFor(tokenRow: Token, reason: TokenInvalidReason | null): A
     : { reason: 'invalid_token', mediaId: null, groupId: null };
 }
 
+/**
+ * Books one view of a single-media token: its counter goes up and the view is
+ * written to the history, in one transaction so the count and the history
+ * behind it can never drift apart.
+ */
 export async function validateAndConsumeToken(tokenValue: string): Promise<Token | null> {
   const tokenRow = await validateToken(tokenValue);
-  if (!tokenRow) {
+  if (!tokenRow?.mediaId) {
     return null;
   }
+  const mediaId = tokenRow.mediaId;
   const db = useDb();
-  const [updated] = await db
-    .update(tokens)
-    .set({ usageCount: tokenRow.usageCount + 1, ...activationColumns(tokenRow) })
-    .where(eq(tokens.id, tokenRow.id))
-    .returning();
-  return updated ?? null;
+  return db.transaction((tx) => {
+    const now = new Date();
+    const updated = tx
+      .update(tokens)
+      .set({ usageCount: tokenRow.usageCount + 1, ...activationColumns(tokenRow, now) })
+      .where(eq(tokens.id, tokenRow.id))
+      .returning()
+      .get();
+    recordView(tx, tokenRow.id, mediaId, now);
+    return updated ?? null;
+  });
+}
+
+type DbTransaction = Parameters<Parameters<ReturnType<typeof useDb>['transaction']>[0]>[0];
+
+/**
+ * Writes a spent view to the history. Only what the statistics and the
+ * per-token history need — the token, the media and the moment — and nothing
+ * about the visitor.
+ */
+function recordView(tx: DbTransaction, tokenId: string, mediaId: string, viewedAt: Date) {
+  tx.insert(tokenViews).values({ id: generateId(), tokenId, mediaId, viewedAt }).run();
 }
 
 /** Views a group token already spent, keyed by media id. */
@@ -210,6 +232,7 @@ export interface GroupMediaView {
 export async function consumeGroupMediaView(tokenRow: Token, mediaId: string): Promise<GroupMediaView> {
   const db = useDb();
   return db.transaction((tx) => {
+    const now = new Date();
     const current = tx
       .select()
       .from(tokenMediaUsage)
@@ -226,12 +249,102 @@ export async function consumeGroupMediaView(tokenRow: Token, mediaId: string): P
       tx.insert(tokenMediaUsage).values({ tokenId: tokenRow.id, mediaId, usageCount }).run();
     }
     const updated = tx.update(tokens)
-      .set({ usageCount: sql`${tokens.usageCount} + 1`, ...activationColumns(tokenRow) })
+      .set({ usageCount: sql`${tokens.usageCount} + 1`, ...activationColumns(tokenRow, now) })
       .where(eq(tokens.id, tokenRow.id))
       .returning({ expiresAt: tokens.expiresAt })
       .get();
+    recordView(tx, tokenRow.id, mediaId, now);
     return { usageCount, expiresAt: updated?.expiresAt ?? tokenRow.expiresAt };
   });
+}
+
+export interface TokenViewEntry extends TokenView {
+  /** The media's title at the time of reading, for a history an admin can read without looking ids up. */
+  mediaTitle: string
+}
+
+export interface TokenViewHistory {
+  token: Token
+  /** The media or group the token unlocks, by name. */
+  targetTitle: string | null
+  /** Newest first. */
+  views: TokenViewEntry[]
+}
+
+/**
+ * Everything an admin needs when a visitor asks where their views went: the
+ * token as it stands, and every view it spent, with the media each one opened.
+ * Views spent before the history existed are not in it — `usageCount` still
+ * counts them, so a count above the number of views means exactly that.
+ */
+export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHistory | null> {
+  const db = useDb();
+  const tokenRow = (await db.select().from(tokens).where(eq(tokens.id, tokenId)))[0];
+  if (!tokenRow) {
+    return null;
+  }
+  const views = await db
+    .select({ ...getTableColumns(tokenViews), mediaTitle: media.title })
+    .from(tokenViews)
+    .innerJoin(media, eq(media.id, tokenViews.mediaId))
+    .where(eq(tokenViews.tokenId, tokenId))
+    .orderBy(desc(tokenViews.viewedAt), desc(tokenViews.id));
+  let targetTitle: string | null = null;
+  if (tokenRow.mediaId) {
+    targetTitle = (await db.select({ title: media.title }).from(media).where(eq(media.id, tokenRow.mediaId)))[0]?.title ?? null;
+  }
+  else if (tokenRow.groupId) {
+    targetTitle = (await getMediaGroupById(tokenRow.groupId))?.name ?? null;
+  }
+  return { token: tokenRow, targetTitle, views };
+}
+
+function viewsBetween(from: Date, to: Date, mediaId: string | null) {
+  return and(
+    gte(tokenViews.viewedAt, from),
+    lte(tokenViews.viewedAt, to),
+    ...(mediaId ? [eq(tokenViews.mediaId, mediaId)] : []),
+  );
+}
+
+/** The views spent in a period, for counting; only one media's when `mediaId` is set. */
+export async function listViewsBetween(from: Date, to: Date, mediaId: string | null = null) {
+  const db = useDb();
+  return db
+    .select({ tokenId: tokenViews.tokenId, mediaId: tokenViews.mediaId, viewedAt: tokenViews.viewedAt })
+    .from(tokenViews)
+    .where(viewsBetween(from, to, mediaId));
+}
+
+/**
+ * The latest views of a period, each with the media it opened and the token
+ * that spent it — by name, value and batch, the way the admin UI lists tokens,
+ * so a view can be traced back to the batch it was handed out in.
+ */
+export async function listRecentViews(from: Date, to: Date, mediaId: string | null, limit: number) {
+  const db = useDb();
+  return db
+    .select({
+      id: tokenViews.id,
+      viewedAt: tokenViews.viewedAt,
+      mediaId: tokenViews.mediaId,
+      mediaTitle: media.title,
+      tokenId: tokens.id,
+      tokenName: tokens.name,
+      token: tokens.token,
+      batchId: tokens.batchId,
+      batchName: batches.name,
+      groupId: tokens.groupId,
+      groupName: mediaGroups.name,
+    })
+    .from(tokenViews)
+    .innerJoin(media, eq(media.id, tokenViews.mediaId))
+    .innerJoin(tokens, eq(tokens.id, tokenViews.tokenId))
+    .leftJoin(batches, eq(batches.id, tokens.batchId))
+    .leftJoin(mediaGroups, eq(mediaGroups.id, tokens.groupId))
+    .where(viewsBetween(from, to, mediaId))
+    .orderBy(desc(tokenViews.viewedAt), desc(tokenViews.id))
+    .limit(limit);
 }
 
 export async function createToken(data: TokenTarget & {

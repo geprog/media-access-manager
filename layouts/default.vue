@@ -73,6 +73,12 @@ const items = computed<NavigationMenuItem[]>(() => (loggedIn.value
           to: '/groups',
           active: path.value.startsWith('/groups'),
         },
+        {
+          label: t('statistics_title'),
+          icon: 'i-heroicons-chart-bar',
+          to: '/statistics',
+          active: path.value.startsWith('/statistics'),
+        },
       ],
       [
         {

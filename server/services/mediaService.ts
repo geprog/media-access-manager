@@ -1,7 +1,7 @@
 import type { MediaInsert } from '../db/schema';
 import type { AccessibilityContext, AccessibilityReport, MediaProvider, OEmbedResponse } from './providers/types';
 import { eq } from 'drizzle-orm';
-import { batches, media, mediaGroupItems, tokenMediaUsage, tokens } from '../db/schema';
+import { batches, media, mediaGroupItems, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { useDb } from '../utils/db';
 import { filterAvailableMediaItems } from '../utils/mediaAvailability';
 import { createVimeoProvider } from './providers/vimeo';
@@ -62,6 +62,9 @@ export async function deleteMedia(id: string): Promise<MediaDeletion | null> {
   }
   const db = useDb();
   const deleted = db.transaction((tx) => {
+    // Its own tokens' views all point at it, and so do a group token's views
+    // of it, so the one condition covers the history of both.
+    tx.delete(tokenViews).where(eq(tokenViews.mediaId, id)).run();
     tx.delete(tokenMediaUsage).where(eq(tokenMediaUsage.mediaId, id)).run();
     const removedFromGroups = tx.delete(mediaGroupItems).where(eq(mediaGroupItems.mediaId, id)).run().changes;
     const deletedTokens = tx.delete(tokens).where(eq(tokens.mediaId, id)).run().changes;

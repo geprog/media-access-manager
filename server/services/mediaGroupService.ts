@@ -1,6 +1,6 @@
 import type { Media, MediaGroup } from '../db/schema';
 import { asc, eq, inArray } from 'drizzle-orm';
-import { batches, media, mediaGroupItems, mediaGroups, tokenMediaUsage, tokens } from '../db/schema';
+import { batches, media, mediaGroupItems, mediaGroups, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 
 export interface MediaGroupSummary extends MediaGroup {
@@ -140,6 +140,7 @@ export async function deleteMediaGroup(id: string): Promise<MediaGroupDeletion |
     .where(eq(tokens.groupId, id))).map(row => row.id);
   return db.transaction((tx) => {
     if (groupTokenIds.length > 0) {
+      tx.delete(tokenViews).where(inArray(tokenViews.tokenId, groupTokenIds)).run();
       tx.delete(tokenMediaUsage).where(inArray(tokenMediaUsage.tokenId, groupTokenIds)).run();
     }
     const deletedTokens = tx.delete(tokens).where(eq(tokens.groupId, id)).run().changes;

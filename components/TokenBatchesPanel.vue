@@ -54,6 +54,8 @@
       </p>
     </div>
 
+    <TokenViewHistoryModal v-model:token-id="historyTokenId" />
+
     <UModal v-model:open="showExportModal" :title="$t('qr_export')">
       <template #body>
         <form class="space-y-4" @submit.prevent="handleExportDownload">
@@ -683,6 +685,9 @@ function expiresText(row: TokenRow): string {
   return '—';
 }
 
+/** The token whose view history is open, `null` while none is. */
+const historyTokenId = ref<string | null>(null);
+
 const tokenColumns: TableColumn<TokenRow>[] = [
   {
     accessorKey: 'name',
@@ -710,6 +715,15 @@ const tokenColumns: TableColumn<TokenRow>[] = [
     cell: ({ row }) => {
       const token = row.original.token;
       return h('div', { class: 'flex items-center justify-end gap-3' }, [
+        h(resolveComponent('UButton') as any, {
+          label: t('token_history'),
+          size: 'xs',
+          variant: 'ghost',
+          icon: 'i-heroicons-clock',
+          onClick: () => {
+            historyTokenId.value = row.original.id;
+          },
+        }),
         h(resolveComponent('UButton') as any, {
           label: t('token_edit'),
           size: 'xs',

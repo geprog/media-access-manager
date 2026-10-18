@@ -13,7 +13,7 @@ A simplified Nuxt.js webapp for managing token-based access to media from differ
 | Auth      | User accounts (email/password)      | Single global password                         |
 | Media     | Vimeo only                          | Provider abstraction layer                     |
 | Tokens    | Complex (IP, batch QR, etc.)        | Create & batch per media, list tokens          |
-| Analytics | Device UUID, TokenUsage, dashboards | None (later stage)                             |
+| Analytics | Device UUID, TokenUsage, dashboards | View history per token, usage statistics       |
 | QR        | Batch generation, ZIP download      | Batch generation, ZIP download (kept)          |
 | Theming   | Not specified                       | White-label: primary color, logo, company name |
 
@@ -149,7 +149,8 @@ limit of every token" checkbox removes the limit from all of them.
 **Schema** (simplified):
 
 - `tokens`: `id`, `token` (32-char), `media_id`, `batch_id` (nullable FK), `name`, `starts_at`, `expires_at`, `valid_for` (nullable JSON), `first_used_at` (nullable), `usage_limit`, `usage_count`, `created_at`
-- No `TokenUsage`, `TokenAnalytics` tables
+- `token_views`: `id`, `token_id`, `media_id`, `viewed_at` — one row per spent
+  view, see [View history and statistics](#view-history-and-statistics)
 
 **Validation logic**:
 
@@ -189,6 +190,34 @@ nothing is validated against it for a group token.
 Because the counts are per media, a partly used-up group is a normal state, not
 an error: some entries play, others are closed.
 
+### View history and statistics
+
+Every spent view is written to `token_views (id, token_id, media_id,
+viewed_at)` in the same transaction that raises the counter, so the count and
+the history behind it cannot drift apart. `media_id` is the media opened: a
+single-media token's own, or the one picked from a group. Nothing about the
+visitor is recorded — no address, no device, no user agent — only _that_ a
+token opened a media and _when_. Admin previews spend nothing and leave no row.
+
+The history answers two questions:
+
+- **Per token** (`GET /api/tokens/:id/views`): when a visitor asks "why are all
+  my views gone?", the admin opens the token's history from the token list and
+  sees every view with its time and media, next to the token's creation, first
+  use and expiry. Views spent before the history existed are in `usage_count`
+  but have no row; the dialog says how many, rather than letting the gap look
+  like a bug.
+- **Across the deployment** (`GET /api/statistics`): the statistics page counts
+  the views of a period — the last 7, 30 or 90 days per day, the last 12 months
+  per month — as a chart, per media, and as a list of the latest views with the
+  token and batch that spent them. The page sends the range as instants plus its
+  own IANA time zone, and the server buckets by that zone, so a view at 23:30 in
+  Berlin lands on the Berlin day. An optional `mediaId` narrows everything down
+  to one media; the media page links here with its own id.
+
+Deleting a media removes the views that point at it (its own tokens' and group
+tokens' alike); deleting a group removes the views of its tokens.
+
 ---
 
 ## 3. Admin: Single Global Password
@@ -203,9 +232,10 @@ an error: some entries play, others are closed.
   - Batch token generation with QR codes (ZIP download)
   - List tokens per media and per group
   - Edit a batch: name, usage limit and validity of all its tokens
+  - Read a token's view history, and the usage statistics of a period
 - **Removed**:
   - User CRUD
-  - Analytics pages and services
+  - Device tracking and anything else that identifies a visitor
 
 ---
 
@@ -224,8 +254,8 @@ an error: some entries play, others are closed.
    now"; reloading the page asks again. Admin previews never spend anything and
    skip the question.
 5. If valid and confirmed (or nothing to confirm) → fetch embed via provider,
-   increment `usage_count`, render player.
-6. No device tracking, no analytics.
+   increment `usage_count`, record the view in `token_views`, render player.
+6. No device tracking: the view is recorded with its time and nothing else.
 
 The confirmation is a `POST` to the same access endpoint the page reads with
 `GET`: `GET` never spends a view that needs confirming, so neither an accidental
@@ -302,7 +332,9 @@ media-access-manager/
 │   │   ├── media/          # list media (from providers)
 │   │   ├── groups/         # CRUD media groups
 │   │   ├── tokens/         # CRUD tokens, batch create, list by media
-│   │   │   └── batch/      # POST batch, GET batch/:id/qr-zip
+│   │   │   ├── batch/      # POST batch, GET batch/:id/qr-zip
+│   │   │   └── [id]/views  # a token's view history
+│   │   ├── statistics      # views of a period: per day/month, per media, latest
 │   │   └── access/         # validate token, return embed
 │   ├── services/
 │   │   ├── authService.ts
@@ -315,7 +347,8 @@ media-access-manager/
 │   │       └── vimeo.ts   # Vimeo implementation
 ├── components/
 │   ├── admin/             # AdminLayout, MediaList, TokenList, TokenForm,
-│   │                      # BatchTokenGenerator, QRCodeDisplay
+│   │                      # BatchTokenGenerator, QRCodeDisplay,
+│   │                      # TokenViewHistoryModal, ViewStatisticsChart
 │   └── public/
 │       └── MediaPlayer.vue # Embed + invalid token message
 ├── pages/
@@ -328,6 +361,7 @@ media-access-manager/
 │   │   └── [id].vue       # Group detail + its media + tokens + batch gen
 │   ├── tokens/
 │   │   └── batch.vue      # Batch token generation (select media, count, QR ZIP)
+│   ├── statistics.vue     # Usage statistics: period filter, chart, per media, latest views
 │   └── [token]/
 │       ├── index.vue      # Public access: player, or a group's media list
 │       └── [mediaId].vue  # Public access to one media of a group
@@ -347,6 +381,7 @@ media-access-manager/
 | `tokens`            | id, token, media_id (nullable), group_id (nullable), batch_id (nullable FK), name, starts_at, expires_at, usage_limit, usage_count, created_at |
 | `batches`           | id, media_id (nullable), group_id (nullable), name, created_at                                                                                 |
 | `token_media_usage` | token_id, media_id, usage_count (PK: token_id + media_id)                                                                                      |
+| `token_views`       | id, token_id, media_id, viewed_at (indexed by token_id and by viewed_at)                                                                       |
 
 Exactly one of `media_id` and `group_id` is set on `tokens` and on `batches`.
 
@@ -370,11 +405,10 @@ enforcement around the migration run instead.
 ## 10. Removed Items (from original concept)
 
 - Users table and user management
-- TokenUsage, TokenAnalytics tables
 - Device UUID tracking and `useDeviceTracking`
-- Analytics service, routes, pages
 - IP restrictions on tokens
-- Charts, analytics dashboards
+- Anything in the view history that identifies a visitor (the history keeps
+  only token, media and time — see section 2)
 
 ---
 
@@ -426,4 +460,4 @@ DATABASE_URL=...
 
 ## Summary
 
-The MVP keeps: media list with provider abstraction, tokens per media (single + batch) with date/usage limits, batch QR generation (ZIP download), embed-only viewing, single admin password, and white-label theming. It drops: user accounts, analytics, device tracking, and IP restrictions.
+The MVP keeps: media list with provider abstraction, tokens per media (single + batch) with date/usage limits, batch QR generation (ZIP download), embed-only viewing, single admin password, white-label theming, and a view history per token with usage statistics. It drops: user accounts, device tracking, and IP restrictions.

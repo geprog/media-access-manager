@@ -1,6 +1,6 @@
 import type { ValidityDuration } from '../../utils/accessWindow';
 import { sql } from 'drizzle-orm';
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export interface ProviderConfig<Provider extends string> {
   providerId: Provider
@@ -98,6 +98,23 @@ export const tokenMediaUsage = sqliteTable('token_media_usage', {
   usageCount: integer('usage_count').notNull().default(0),
 }, table => [primaryKey({ columns: [table.tokenId, table.mediaId] })]);
 
+/**
+ * One spent view: which token opened which media, and when. This is the
+ * history behind every `usageCount` — what an admin reads when a visitor asks
+ * where their views went — and the source of the usage statistics. Deliberately
+ * nothing about the visitor: no address, no device, only the moment.
+ */
+export const tokenViews = sqliteTable('token_views', {
+  id: text('id').primaryKey(),
+  tokenId: text('token_id').notNull().references(() => tokens.id),
+  /** The media opened: a single-media token's own, or the one picked from a group. */
+  mediaId: text('media_id').notNull().references(() => media.id),
+  viewedAt: integer('viewed_at', { mode: 'timestamp' }).notNull(),
+}, table => [
+  index('token_views_token_id_idx').on(table.tokenId),
+  index('token_views_viewed_at_idx').on(table.viewedAt),
+]);
+
 export type Media = typeof media.$inferSelect;
 export type MediaInsert = typeof media.$inferInsert;
 export type MediaGroup = typeof mediaGroups.$inferSelect;
@@ -107,3 +124,4 @@ export type BatchInsert = typeof batches.$inferInsert;
 export type Token = typeof tokens.$inferSelect;
 export type TokenInsert = typeof tokens.$inferInsert;
 export type TokenMediaUsage = typeof tokenMediaUsage.$inferSelect;
+export type TokenView = typeof tokenViews.$inferSelect;

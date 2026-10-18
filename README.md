@@ -38,9 +38,13 @@ design without a rebuild.
   a provider-specific checklist when it could not
 - **White-label theming** – brand color, logo, favicon, title, radius and
   density from environment variables, see [docs/theming.md](docs/theming.md)
+- **View history and statistics** – every spent view is recorded with its token,
+  media and time: a per-token history answers "where did my views go?", and a
+  statistics page shows views per day, per media and the latest ones
 - **Single admin password** – no user accounts, no user management
 - **Localized** – English and German, all strings via i18n keys
-- **No tracking** – no analytics, no device identifiers, no visitor accounts
+- **No tracking** – no device identifiers, no IP addresses, no visitor
+  accounts; the view history records only which token opened which media when
 
 ## How it works
 
@@ -55,8 +59,8 @@ design without a rebuild.
 
 **Visitor**
 
-- _Single-media token_: opening `/{token}` validates it, spends one view and
-  renders the player.
+- _Single-media token_: opening `/{token}` validates it, spends one view
+  (recorded in the token's history) and renders the player.
 - _Group token_: `/{token}` lists the group's media with each entry's remaining
   views – browsing costs nothing. Picking one opens `/{token}/{mediaId}`, which
   spends a view on that media alone. Media that are used up stay visible, marked
