@@ -242,7 +242,7 @@ test.describe('Media groups', () => {
     await openGroupViaUI(page, groupName);
     const token = await createTokenViaUI(page, `E2E Doomed Batch ${suffix}`, 1);
 
-    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/groups', { timeout: 10000 });

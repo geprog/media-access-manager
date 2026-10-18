@@ -19,18 +19,27 @@ vi.mock('../utils/db', () => ({
 
 const {
   consumeGroupMediaView,
+  createBatch,
   createToken,
+  deleteBatch,
+  deleteToken,
+  findBatchById,
   findTokenByValue,
   getTokenViewHistory,
   listRecentViews,
+  listTokensByBatchId,
   listViewsBetween,
   validateAndConsumeToken,
 } = await import('./tokenService');
 const { createMedia, deleteMedia } = await import('./mediaService');
 const { createMediaGroup, deleteMediaGroup } = await import('./mediaGroupService');
 
+function countRows(table: 'token_views' | 'token_media_usage' | 'tokens'): number {
+  return (sqlite.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
+}
+
 function countViews(): number {
-  return (sqlite.prepare('SELECT count(*) AS n FROM token_views').get() as { n: number }).n;
+  return countRows('token_views');
 }
 
 let counter = 0;
@@ -157,6 +166,77 @@ describe('deleting what views point at', () => {
     await deleteMediaGroup(group.id);
 
     expect(countViews()).toBe(0);
+  });
+});
+
+describe('deleting batches and tokens', () => {
+  it('deletes a batch with its tokens and their views, leaving other batches be', async () => {
+    const mediaId = await someMedia();
+    const doomed = await createBatch({ mediaId }, 2, { name: 'Test' });
+    const kept = await createBatch({ mediaId }, 1, { name: 'Real' });
+    await validateAndConsumeToken(doomed.tokens[0]!.token);
+    await validateAndConsumeToken(kept.tokens[0]!.token);
+
+    expect(await deleteBatch(doomed.batchId)).toEqual({ deletedTokens: 2 });
+
+    expect(await findBatchById(doomed.batchId)).toBeNull();
+    expect(await findTokenByValue(doomed.tokens[1]!.token)).toBeNull();
+    expect(await listTokensByBatchId(kept.batchId)).toHaveLength(1);
+    expect(countViews()).toBe(1);
+  });
+
+  it('deletes a group batch along with what its tokens spent per media', async () => {
+    const mediaId = await someMedia();
+    const group = await createMediaGroup('Workshop', [mediaId]);
+    const { batchId, tokens } = await createBatch({ groupId: group.id }, 1, { name: 'Test' });
+    await consumeGroupMediaView((await findTokenByValue(tokens[0]!.token))!, mediaId);
+
+    await deleteBatch(batchId);
+
+    expect(countRows('token_media_usage')).toBe(0);
+    expect(countViews()).toBe(0);
+  });
+
+  it('is `null` for a batch that does not exist', async () => {
+    expect(await deleteBatch('missing')).toBeNull();
+  });
+
+  it('deletes a single token with its views and keeps the rest of its batch', async () => {
+    const mediaId = await someMedia();
+    const { batchId, tokens } = await createBatch({ mediaId }, 2, { name: 'Mixed' });
+    await validateAndConsumeToken(tokens[0]!.token);
+    await validateAndConsumeToken(tokens[1]!.token);
+
+    expect(await deleteToken(tokens[0]!.id)).toEqual({ deletedBatch: false });
+
+    expect(await findTokenByValue(tokens[0]!.token)).toBeNull();
+    expect((await listTokensByBatchId(batchId)).map(row => row.id)).toEqual([tokens[1]!.id]);
+    expect(countViews()).toBe(1);
+  });
+
+  it('deletes a group token along with what it spent per media', async () => {
+    const mediaId = await someMedia();
+    const group = await createMediaGroup('Workshop', [mediaId]);
+    const { id, token } = await createToken({ groupId: group.id, name: 'group' });
+    await consumeGroupMediaView((await findTokenByValue(token))!, mediaId);
+
+    await deleteToken(id);
+
+    expect(countRows('token_media_usage')).toBe(0);
+    expect(countViews()).toBe(0);
+  });
+
+  it('takes the batch along with its last token, which would only leave an empty batch', async () => {
+    const mediaId = await someMedia();
+    const { batchId, tokens } = await createBatch({ mediaId }, 1, { name: 'Single' });
+
+    expect(await deleteToken(tokens[0]!.id)).toEqual({ deletedBatch: true });
+
+    expect(await findBatchById(batchId)).toBeNull();
+  });
+
+  it('is `null` for a token that does not exist', async () => {
+    expect(await deleteToken('missing')).toBeNull();
   });
 });
 

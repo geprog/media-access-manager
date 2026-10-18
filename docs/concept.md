@@ -218,7 +218,13 @@ The history answers two questions:
 Deleting a media removes the views that point at it (its own tokens' and group
 tokens' alike), and lowers each group token's total by the views it spent
 there, so a token's count and its history keep agreeing; deleting a group
-removes the views of its tokens.
+removes the views of its tokens. Deleting a batch (`DELETE /api/batches/:id`)
+or a single token (`DELETE /api/tokens/:id`), e.g. to clear out test tokens,
+removes those tokens' views and per-media counters as well; a batch losing its
+last token goes with it. The admin UI only deletes either once the admin typed
+the batch's name, or the token's value, into the confirmation dialog: tokens
+are numbered 1, 2, 3, … in every batch, so a token's name would not tell it
+apart.
 
 ---
 

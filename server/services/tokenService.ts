@@ -1,4 +1,5 @@
 import type { Media, MediaGroup, Token, TokenView } from '../db/schema';
+import type { DbTransaction } from '../utils/db';
 import type { GroupMediaAccess } from '../utils/groupAccess';
 import type { TokenSettingsChanges } from '../utils/tokenSettings';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
@@ -9,6 +10,7 @@ import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, media, mediaGroups, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { deleteTokensWhere } from '../utils/tokenDeletion';
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
@@ -132,8 +134,6 @@ export async function validateAndConsumeToken(tokenValue: string): Promise<Token
     return updated ?? null;
   });
 }
-
-type DbTransaction = Parameters<Parameters<ReturnType<typeof useDb>['transaction']>[0]>[0];
 
 /**
  * Writes a spent view to the history. Only what the statistics and the
@@ -532,5 +532,46 @@ export async function updateToken(tokenId: string, changes: TokenSettingsChanges
       return tokenRow;
     }
     return tx.update(tokens).set(columns).where(eq(tokens.id, tokenId)).returning().get() ?? null;
+  });
+}
+
+/**
+ * Deletes a batch with all its tokens, e.g. one created to try things out.
+ * Their links and QR codes stop working. `null` when there is no such batch.
+ */
+export async function deleteBatch(batchId: string): Promise<{ deletedTokens: number } | null> {
+  const db = useDb();
+  return db.transaction((tx) => {
+    const batch = tx.select().from(batches).where(eq(batches.id, batchId)).get();
+    if (!batch) {
+      return null;
+    }
+    const deletedTokens = deleteTokensWhere(tx, eq(tokens.batchId, batchId));
+    tx.delete(batches).where(eq(batches.id, batchId)).run();
+    return { deletedTokens };
+  });
+}
+
+/**
+ * Deletes a single token. A batch cannot be refilled, so one left without
+ * tokens would only be an empty drawer in the list and goes with its last
+ * token. `null` when there is no such token.
+ */
+export async function deleteToken(tokenId: string): Promise<{ deletedBatch: boolean } | null> {
+  const db = useDb();
+  return db.transaction((tx) => {
+    const tokenRow = tx.select().from(tokens).where(eq(tokens.id, tokenId)).get();
+    if (!tokenRow) {
+      return null;
+    }
+    deleteTokensWhere(tx, eq(tokens.id, tokenId));
+    let deletedBatch = false;
+    if (tokenRow.batchId) {
+      const remaining = tx.select({ id: tokens.id }).from(tokens).where(eq(tokens.batchId, tokenRow.batchId)).get();
+      if (!remaining) {
+        deletedBatch = tx.delete(batches).where(eq(batches.id, tokenRow.batchId)).run().changes > 0;
+      }
+    }
+    return { deletedBatch };
   });
 }

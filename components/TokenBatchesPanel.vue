@@ -36,6 +36,14 @@
                 @click="openEditModal(item.value)"
               />
               <UButton
+                :label="$t('batch_delete')"
+                size="sm"
+                color="error"
+                variant="outline"
+                icon="i-heroicons-trash"
+                @click="openBatchDeleteModal(item.value)"
+              />
+              <UButton
                 :label="$t('qr_export')"
                 size="sm"
                 @click="openExportModal(item.value)"
@@ -43,6 +51,7 @@
             </div>
             <BatchTokensTable
               :tokens="matchingTokensByBatch.get(item.value) ?? []"
+              :filter="tokenFilter"
               :columns="tokenColumns"
               :loading="tokensLoading"
             />
@@ -55,6 +64,17 @@
     </div>
 
     <TokenViewHistoryModal v-model:token-id="historyTokenId" />
+
+    <TypedDeleteConfirmModal
+      v-if="deletion"
+      v-model:open="showDeleteModal"
+      :title="deletion.title"
+      :message="deletion.message"
+      :hint="deletion.hint"
+      :confirm-text="deletion.confirmText"
+      :confirm-label="deletion.confirmLabel"
+      :action="deletion.action"
+    />
 
     <UModal v-model:open="showExportModal" :title="$t('qr_export')">
       <template #body>
@@ -312,7 +332,7 @@ import type { BatchSettings, TokenRow, ValidityConflicts } from '~/utils/tokens'
 import { format } from 'date-fns';
 import { h, resolveComponent } from 'vue';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
-import { getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
+import { getBatchDisplayName, getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
   /** Set for a single media's tokens; mutually exclusive with `groupId`. */
@@ -324,6 +344,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const toast = useToast();
 
 const targetQuery = computed(() =>
   props.groupId ? `groupId=${props.groupId}` : `mediaId=${props.mediaId}`,
@@ -639,8 +660,8 @@ const batchAccordionItems = computed(() =>
     .filter(b => !isSearching.value || matchingTokensByBatch.value.has(b.id))
     .map(b => ({
       label: isSearching.value
-        ? `${b.name || b.id} (${matchingTokensByBatch.value.get(b.id)?.length ?? 0} / ${b.count} ${t('batches_tokens_count')})`
-        : `${b.name || b.id} (${b.count} ${t('batches_tokens_count')})`,
+        ? `${getBatchDisplayName(b)} (${matchingTokensByBatch.value.get(b.id)?.length ?? 0} / ${b.count} ${t('batches_tokens_count')})`
+        : `${getBatchDisplayName(b)} (${b.count} ${t('batches_tokens_count')})`,
       value: b.id,
     })),
 );
@@ -683,6 +704,91 @@ function expiresText(row: TokenRow): string {
     return t('tokens_expires_after_first_use', { duration: formatDuration(row.validFor) });
   }
   return '—';
+}
+
+interface Deletion {
+  title: string
+  message: string
+  hint: string
+  confirmText: string
+  confirmLabel: string
+  action: () => Promise<void>
+}
+
+/** What the delete dialog is about to delete, `null` before it was first opened. */
+const deletion = ref<Deletion | null>(null);
+const showDeleteModal = ref(false);
+
+function openDeleteModal(next: Deletion) {
+  deletion.value = next;
+  showDeleteModal.value = true;
+}
+
+/**
+ * Sends a deletion and brings the lists up to date whatever came of it. Gone
+ * already, e.g. deleted in another tab, is what the admin wanted anyway; any
+ * other failure is left to the dialog to report.
+ */
+async function runDeletion(request: () => Promise<void>) {
+  try {
+    await request();
+  }
+  catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 404)
+      throw error;
+    toast.add({ title: t('delete_already_gone'), color: 'info' });
+  }
+  finally {
+    // Settled rather than awaited plainly, so a refresh failing after the
+    // deletion went through cannot report the deletion as failed.
+    await Promise.allSettled([refreshBatches(), refreshTokens()]);
+    // Whichever batches went, now or earlier, are no longer open.
+    openBatchIds.value = openBatchIds.value.filter(id => batches.value?.some(b => b.id === id));
+  }
+}
+
+function openBatchDeleteModal(batchId: string) {
+  const batch = batches.value?.find(b => b.id === batchId);
+  if (!batch)
+    return;
+  const name = getBatchDisplayName(batch);
+  openDeleteModal({
+    title: t('batch_delete_title'),
+    message: t('batch_delete_confirm', { name, count: batch.count }, batch.count),
+    hint: t('batch_delete_confirm_hint'),
+    confirmText: name,
+    confirmLabel: t('batch_delete'),
+    action: () => runDeletion(async () => {
+      await $fetch(`/api/batches/${batchId}`, { method: 'DELETE' });
+      toast.add({ title: t('batch_deleted', { name }), color: 'success' });
+    }),
+  });
+}
+
+function openTokenDeleteModal(token: TokenRow) {
+  const name = token.name || token.token;
+  // Looked up now, while the batch is still in the list: once the deletion
+  // took it along, there is nothing left to name it by.
+  const batch = batches.value?.find(b => b.id === token.batchId);
+  const batchName = batch ? getBatchDisplayName(batch) : token.batchId;
+  openDeleteModal({
+    title: t('token_delete_title'),
+    message: t('token_delete_confirm', { name }),
+    hint: t('token_delete_confirm_hint'),
+    // Every batch numbers its tokens 1, 2, 3, …, so only the token value tells
+    // the one meant apart from its namesakes in other batches.
+    confirmText: token.token,
+    confirmLabel: t('token_delete'),
+    action: () => runDeletion(async () => {
+      const { deletedBatch } = await $fetch(`/api/tokens/${token.id}`, { method: 'DELETE' });
+      if (deletedBatch && token.batchId) {
+        toast.add({ title: t('token_deleted_with_batch', { name, batchName }), color: 'success' });
+      }
+      else {
+        toast.add({ title: t('token_deleted', { name }), color: 'success' });
+      }
+    }),
+  });
 }
 
 /** The token whose view history is open, `null` while none is. */
@@ -730,6 +836,14 @@ const tokenColumns: TableColumn<TokenRow>[] = [
           variant: 'ghost',
           icon: 'i-heroicons-pencil-square',
           onClick: () => openTokenEditModal(row.original),
+        }),
+        h(resolveComponent('UButton') as any, {
+          label: t('token_delete'),
+          size: 'xs',
+          variant: 'ghost',
+          color: 'error',
+          icon: 'i-heroicons-trash',
+          onClick: () => openTokenDeleteModal(row.original),
         }),
         h('a', {
           href: `/${encodeURIComponent(token)}`,

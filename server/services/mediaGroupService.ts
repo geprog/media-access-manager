@@ -1,7 +1,8 @@
 import type { Media, MediaGroup } from '../db/schema';
 import { asc, eq, inArray } from 'drizzle-orm';
-import { batches, media, mediaGroupItems, mediaGroups, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
+import { batches, media, mediaGroupItems, mediaGroups, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
+import { deleteTokensWhere } from '../utils/tokenDeletion';
 
 export interface MediaGroupSummary extends MediaGroup {
   mediaCount: number
@@ -134,16 +135,8 @@ export async function deleteMediaGroup(id: string): Promise<MediaGroupDeletion |
     return null;
   }
   const db = useDb();
-  const groupTokenIds = (await db
-    .select({ id: tokens.id })
-    .from(tokens)
-    .where(eq(tokens.groupId, id))).map(row => row.id);
   return db.transaction((tx) => {
-    if (groupTokenIds.length > 0) {
-      tx.delete(tokenViews).where(inArray(tokenViews.tokenId, groupTokenIds)).run();
-      tx.delete(tokenMediaUsage).where(inArray(tokenMediaUsage.tokenId, groupTokenIds)).run();
-    }
-    const deletedTokens = tx.delete(tokens).where(eq(tokens.groupId, id)).run().changes;
+    const deletedTokens = deleteTokensWhere(tx, eq(tokens.groupId, id));
     const deletedBatches = tx.delete(batches).where(eq(batches.groupId, id)).run().changes;
     tx.delete(mediaGroupItems).where(eq(mediaGroupItems.groupId, id)).run();
     tx.delete(mediaGroups).where(eq(mediaGroups.id, id)).run();
