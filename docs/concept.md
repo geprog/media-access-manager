@@ -143,7 +143,8 @@ batch. When the tokens of a batch no longer share a setting, the batch edit
 dialog warns about it and leaves that field empty (for the validity: "Keep each
 token's own"). As long as it stays empty, every token keeps its own value;
 filling it in applies the new value to every token of the batch again, the
-edited ones included.
+edited ones included. Since an empty usage limit then means "keep", a "Lift the
+limit of every token" checkbox removes the limit from all of them.
 
 **Schema** (simplified):
 

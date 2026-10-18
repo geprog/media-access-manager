@@ -1,5 +1,6 @@
+import type { Token } from '../db/schema';
 import type { TokenValidity } from '~/utils/accessWindow';
-import { parseValidityDuration } from '~/utils/accessWindow';
+import { getEditedValidity, parseValidityDuration } from '~/utils/accessWindow';
 
 /** Settings an admin can change on tokens already handed out. Only what is set is touched. */
 export interface TokenSettingsChanges {
@@ -33,7 +34,10 @@ export function parseTokenSettingsChanges(body: unknown): TokenSettingsChanges |
     changes.validity = { expiresAt: null, validFor };
   }
   else if (input.expiresAt !== undefined) {
-    const expiresAt = input.expiresAt ? new Date(input.expiresAt as string) : null;
+    if (input.expiresAt !== null && typeof input.expiresAt !== 'string') {
+      return null;
+    }
+    const expiresAt = input.expiresAt === null ? null : new Date(input.expiresAt);
     if (expiresAt && Number.isNaN(expiresAt.getTime())) {
       return null;
     }
@@ -41,4 +45,19 @@ export function parseTokenSettingsChanges(body: unknown): TokenSettingsChanges |
   }
 
   return changes;
+}
+
+/**
+ * The columns of one token the changes rewrite, nothing when there are none.
+ * A new first-use duration counts from the token's first view if it was
+ * already opened.
+ */
+export function getTokenSettingsColumns(
+  tokenRow: Pick<Token, 'firstUsedAt'>,
+  changes: TokenSettingsChanges,
+): Partial<Pick<Token, 'usageLimit' | 'expiresAt' | 'validFor'>> {
+  return {
+    ...(changes.usageLimit !== undefined && { usageLimit: changes.usageLimit }),
+    ...(changes.validity && getEditedValidity(tokenRow, changes.validity)),
+  };
 }

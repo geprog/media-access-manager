@@ -9,6 +9,7 @@ import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, tokenMediaUsage, tokens } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
 
@@ -404,13 +405,7 @@ export async function updateToken(tokenId: string, changes: TokenSettingsChanges
     if (!tokenRow) {
       return null;
     }
-    const columns: Partial<Pick<Token, 'usageLimit' | 'expiresAt' | 'validFor'>> = {};
-    if (changes.usageLimit !== undefined) {
-      columns.usageLimit = changes.usageLimit;
-    }
-    if (changes.validity) {
-      Object.assign(columns, getEditedValidity(tokenRow, changes.validity));
-    }
+    const columns = getTokenSettingsColumns(tokenRow, changes);
     if (Object.keys(columns).length === 0) {
       return tokenRow;
     }
