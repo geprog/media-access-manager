@@ -7,6 +7,7 @@ import {
   login,
   mockAccessibility,
   mockAvailableMedia,
+  mockConfirmedView,
   pickAvailableVideo,
   PROVIDER_SETTINGS_URL,
   providerVideo,
@@ -511,6 +512,64 @@ test.describe('Media and Tokens', () => {
 
     await expect(page.getByText('Available for 3 days from the first time you watch')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('This link does not expire')).toHaveCount(0);
+  });
+
+  test('asks before spending one of a limited number of views', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1, { usageLimit: 2 });
+    expect(token).toBeTruthy();
+
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    // The visitor sees what the link leads to and what watching costs, but the
+    // player only comes once they ask for it.
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('2 views left')).toBeVisible();
+    await expect(page.getByText('Watching now uses one of your 2 remaining views.')).toBeVisible();
+    await expect(page.locator('iframe')).toHaveCount(0);
+
+    // Opening the link again spent nothing.
+    await page.reload();
+    await expect(page.getByText('2 views left')).toBeVisible({ timeout: 5000 });
+
+    await mockConfirmedView(page, /\/api\/access\/[^/]+$/, 'E2E Confirmed Video');
+    await page.getByRole('button', { name: 'Watch now' }).click();
+
+    await expect(page.locator('iframe[title="E2E Confirmed Video"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('can be opened 1 more time')).toBeVisible();
+  });
+
+  test('asks before starting a validity that runs from first use', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1, { validForDays: 3 });
+    expect(token).toBeTruthy();
+
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Available for 3 days from the first time you watch')).toBeVisible();
+    await expect(page.getByText(/Your access of 3 days starts the first time you watch\. If you start now, it lasts until/))
+      .toBeVisible();
+    // No views are counted, so there is none to warn about.
+    await expect(page.getByText(/remaining views|last view/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Start access now' })).toBeVisible();
+    await expect(page.locator('iframe')).toHaveCount(0);
   });
 
   test('reports an unavailable video instead of blaming the token', async ({ page }, testInfo) => {

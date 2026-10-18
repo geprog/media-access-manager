@@ -140,6 +140,30 @@ export function videoEmbed(iframeTitle: string) {
   };
 }
 
+/**
+ * Stands in for the provider once a visitor confirmed they want to watch: only
+ * the POST that spends the view hands out an embed. The preview before it is
+ * served by the real server, which asks the provider for nothing.
+ */
+export async function mockConfirmedView(page: Page, urlPattern: RegExp, iframeTitle: string) {
+  await page.route(urlPattern, async (route) => {
+    if (route.request().method() !== 'POST') {
+      return route.fallback();
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        confirmationRequired: false,
+        title: iframeTitle,
+        embed: videoEmbed(iframeTitle),
+        access: { expiresAt: null, validFor: null, usageLimit: 2, usageCount: 1 },
+      }),
+    });
+  });
+}
+
 export interface StubReport {
   status: string
   issues: Array<{ code: string, severity: string, details?: Record<string, string> }>
