@@ -271,6 +271,72 @@ test.describe('Media and Tokens', () => {
     }
   });
 
+  test('deletes a single token once its name is typed in', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    const deleted = rows.filter({ has: page.getByRole('cell', { name: '1', exact: true }) });
+    const tokenValue = await deleted.locator('code').textContent();
+
+    await deleted.getByRole('button', { name: 'Delete', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const confirm = dialog.getByRole('button', { name: 'Delete', exact: true });
+    await expect(confirm).toBeDisabled();
+    await dialog.getByLabel('Type "1" to confirm').fill('2');
+    await expect(confirm).toBeDisabled();
+    await dialog.getByLabel('Type "1" to confirm').fill('1');
+    await confirm.click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await expect(rows).toHaveCount(1);
+    await expect(rows.filter({ hasText: tokenValue! })).toHaveCount(0);
+    await expect(page.getByRole('button').filter({ hasText: `${batchName} (1 tokens)` })).toBeVisible();
+
+    await page.goto(`/${tokenValue}`);
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test('deletes a whole batch once its name is typed in', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 2);
+
+    await page.getByRole('button', { name: 'Delete batch' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText(batchName);
+    const confirm = dialog.getByRole('button', { name: 'Delete batch' });
+    await expect(confirm).toBeDisabled();
+    // Cancelling must leave the batch untouched.
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('button').filter({ hasText: batchName })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Delete batch' }).click();
+    await dialog.getByLabel(`Type "${batchName}" to confirm`).fill(batchName);
+    await confirm.click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await expect(page.getByRole('button').filter({ hasText: batchName })).toHaveCount(0);
+
+    await page.goto(`/${token}`);
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
+  });
+
   test('leaves settings empty that the tokens of a batch do not share', async ({ page }, testInfo) => {
     await login(page);
 
@@ -749,14 +815,15 @@ test.describe('Media and Tokens', () => {
     expect(token).toBeTruthy();
 
     // Cancelling must leave the media untouched.
-    await page.getByRole('button', { name: 'Delete' }).click();
+    // The token panel below has delete buttons of its own; the page's comes first.
+    await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText(title)).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/', { timeout: 10000 });

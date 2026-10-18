@@ -36,6 +36,14 @@
                 @click="openEditModal(item.value)"
               />
               <UButton
+                :label="$t('batch_delete')"
+                size="sm"
+                color="error"
+                variant="outline"
+                icon="i-heroicons-trash"
+                @click="openBatchDeleteModal(item.value)"
+              />
+              <UButton
                 :label="$t('qr_export')"
                 size="sm"
                 @click="openExportModal(item.value)"
@@ -55,6 +63,17 @@
     </div>
 
     <TokenViewHistoryModal v-model:token-id="historyTokenId" />
+
+    <TypedDeleteConfirmModal
+      v-if="deletion"
+      v-model:open="showDeleteModal"
+      :title="deletion.title"
+      :message="deletion.message"
+      :hint="deletion.hint"
+      :confirm-name="deletion.confirmName"
+      :confirm-label="deletion.confirmLabel"
+      :action="deletion.action"
+    />
 
     <UModal v-model:open="showExportModal" :title="$t('qr_export')">
       <template #body>
@@ -324,6 +343,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const toast = useToast();
 
 const targetQuery = computed(() =>
   props.groupId ? `groupId=${props.groupId}` : `mediaId=${props.mediaId}`,
@@ -685,6 +705,61 @@ function expiresText(row: TokenRow): string {
   return '—';
 }
 
+interface Deletion {
+  title: string
+  message: string
+  hint: string
+  confirmName: string
+  confirmLabel: string
+  action: () => Promise<void>
+}
+
+/** What the delete dialog is about to delete, `null` before it was first opened. */
+const deletion = ref<Deletion | null>(null);
+const showDeleteModal = ref(false);
+
+function openDeleteModal(next: Deletion) {
+  deletion.value = next;
+  showDeleteModal.value = true;
+}
+
+function openBatchDeleteModal(batchId: string) {
+  const batch = batches.value?.find(b => b.id === batchId);
+  if (!batch)
+    return;
+  // A batch from before names were required is listed by its id, so that is what to type.
+  const name = batch.name || batch.id;
+  openDeleteModal({
+    title: t('batch_delete_title'),
+    message: t('batch_delete_confirm', { name, count: batch.count }, batch.count),
+    hint: t('batch_delete_confirm_hint'),
+    confirmName: name,
+    confirmLabel: t('batch_delete'),
+    action: async () => {
+      await $fetch(`/api/batches/${batchId}`, { method: 'DELETE' });
+      toast.add({ title: t('batch_deleted', { name }), color: 'success' });
+      openBatchIds.value = openBatchIds.value.filter(id => id !== batchId);
+      await Promise.all([refreshBatches(), refreshTokens()]);
+    },
+  });
+}
+
+function openTokenDeleteModal(token: TokenRow) {
+  const name = token.name || token.token;
+  openDeleteModal({
+    title: t('token_delete_title'),
+    message: t('token_delete_confirm', { name }),
+    hint: t('token_delete_confirm_hint'),
+    confirmName: name,
+    confirmLabel: t('token_delete'),
+    action: async () => {
+      await $fetch(`/api/tokens/${token.id}`, { method: 'DELETE' });
+      toast.add({ title: t('token_deleted', { name }), color: 'success' });
+      await Promise.all([refreshBatches(), refreshTokens()]);
+    },
+  });
+}
+
 /** The token whose view history is open, `null` while none is. */
 const historyTokenId = ref<string | null>(null);
 
@@ -730,6 +805,14 @@ const tokenColumns: TableColumn<TokenRow>[] = [
           variant: 'ghost',
           icon: 'i-heroicons-pencil-square',
           onClick: () => openTokenEditModal(row.original),
+        }),
+        h(resolveComponent('UButton') as any, {
+          label: t('token_delete'),
+          size: 'xs',
+          variant: 'ghost',
+          color: 'error',
+          icon: 'i-heroicons-trash',
+          onClick: () => openTokenDeleteModal(row.original),
         }),
         h('a', {
           href: `/${encodeURIComponent(token)}`,
