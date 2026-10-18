@@ -271,7 +271,7 @@ test.describe('Media and Tokens', () => {
     }
   });
 
-  test('deletes a single token once its name is typed in', async ({ page }, testInfo) => {
+  test('deletes a single token once its value is typed in', async ({ page }, testInfo) => {
     await login(page);
 
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
@@ -287,13 +287,15 @@ test.describe('Media and Tokens', () => {
     const deleted = rows.filter({ has: page.getByRole('cell', { name: '1', exact: true }) });
     const tokenValue = await deleted.locator('code').textContent();
 
-    await deleted.getByRole('button', { name: 'Delete', exact: true }).click();
+    await deleted.getByRole('button', { name: 'Delete token' }).click();
     const dialog = page.getByRole('dialog');
-    const confirm = dialog.getByRole('button', { name: 'Delete', exact: true });
+    const confirm = dialog.getByRole('button', { name: 'Delete token' });
+    const input = dialog.getByLabel(`Type "${tokenValue}" to confirm`);
     await expect(confirm).toBeDisabled();
-    await dialog.getByLabel('Type "1" to confirm').fill('2');
+    // Its name alone is shared by the first token of every batch, so it does not count.
+    await input.fill('1');
     await expect(confirm).toBeDisabled();
-    await dialog.getByLabel('Type "1" to confirm').fill('1');
+    await input.fill(tokenValue!);
     await confirm.click();
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
@@ -815,15 +817,14 @@ test.describe('Media and Tokens', () => {
     expect(token).toBeTruthy();
 
     // Cancelling must leave the media untouched.
-    // The token panel below has delete buttons of its own; the page's comes first.
-    await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText(title)).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/', { timeout: 10000 });

@@ -70,7 +70,7 @@
       :title="deletion.title"
       :message="deletion.message"
       :hint="deletion.hint"
-      :confirm-name="deletion.confirmName"
+      :confirm-text="deletion.confirmText"
       :confirm-label="deletion.confirmLabel"
       :action="deletion.action"
     />
@@ -709,7 +709,7 @@ interface Deletion {
   title: string
   message: string
   hint: string
-  confirmName: string
+  confirmText: string
   confirmLabel: string
   action: () => Promise<void>
 }
@@ -733,7 +733,7 @@ function openBatchDeleteModal(batchId: string) {
     title: t('batch_delete_title'),
     message: t('batch_delete_confirm', { name, count: batch.count }, batch.count),
     hint: t('batch_delete_confirm_hint'),
-    confirmName: name,
+    confirmText: name,
     confirmLabel: t('batch_delete'),
     action: async () => {
       await $fetch(`/api/batches/${batchId}`, { method: 'DELETE' });
@@ -750,11 +750,20 @@ function openTokenDeleteModal(token: TokenRow) {
     title: t('token_delete_title'),
     message: t('token_delete_confirm', { name }),
     hint: t('token_delete_confirm_hint'),
-    confirmName: name,
+    // Every batch numbers its tokens 1, 2, 3, …, so only the token value tells
+    // the one meant apart from its namesakes in other batches.
+    confirmText: token.token,
     confirmLabel: t('token_delete'),
     action: async () => {
-      await $fetch(`/api/tokens/${token.id}`, { method: 'DELETE' });
-      toast.add({ title: t('token_deleted', { name }), color: 'success' });
+      const { deletedBatch } = await $fetch(`/api/tokens/${token.id}`, { method: 'DELETE' });
+      if (deletedBatch && token.batchId) {
+        const batchName = batches.value?.find(b => b.id === token.batchId)?.name || token.batchId;
+        toast.add({ title: t('token_deleted_with_batch', { name, batchName }), color: 'success' });
+        openBatchIds.value = openBatchIds.value.filter(id => id !== token.batchId);
+      }
+      else {
+        toast.add({ title: t('token_deleted', { name }), color: 'success' });
+      }
       await Promise.all([refreshBatches(), refreshTokens()]);
     },
   });

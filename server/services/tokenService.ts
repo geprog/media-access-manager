@@ -1,14 +1,16 @@
 import type { Media, MediaGroup, Token, TokenView } from '../db/schema';
+import type { DbTransaction } from '../utils/db';
 import type { GroupMediaAccess } from '../utils/groupAccess';
 import type { TokenSettingsChanges } from '../utils/tokenSettings';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, getTableColumns, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
 import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, media, mediaGroups, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { deleteTokensWhere } from '../utils/tokenDeletion';
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
 import { getMediaGroupById, listGroupMedia } from './mediaGroupService';
@@ -132,8 +134,6 @@ export async function validateAndConsumeToken(tokenValue: string): Promise<Token
     return updated ?? null;
   });
 }
-
-type DbTransaction = Parameters<Parameters<ReturnType<typeof useDb>['transaction']>[0]>[0];
 
 /**
  * Writes a spent view to the history. Only what the statistics and the
@@ -536,19 +536,6 @@ export async function updateToken(tokenId: string, changes: TokenSettingsChanges
 }
 
 /**
- * Removes tokens for good, along with the views they spent and their per-media
- * counters, so no history is left pointing at a token that is gone.
- */
-function deleteTokenRows(tx: DbTransaction, tokenIds: string[]) {
-  if (tokenIds.length === 0) {
-    return 0;
-  }
-  tx.delete(tokenViews).where(inArray(tokenViews.tokenId, tokenIds)).run();
-  tx.delete(tokenMediaUsage).where(inArray(tokenMediaUsage.tokenId, tokenIds)).run();
-  return tx.delete(tokens).where(inArray(tokens.id, tokenIds)).run().changes;
-}
-
-/**
  * Deletes a batch with all its tokens, e.g. one created to try things out.
  * Their links and QR codes stop working. `null` when there is no such batch.
  */
@@ -559,8 +546,7 @@ export async function deleteBatch(batchId: string): Promise<{ deletedTokens: num
     if (!batch) {
       return null;
     }
-    const tokenIds = tx.select({ id: tokens.id }).from(tokens).where(eq(tokens.batchId, batchId)).all().map(row => row.id);
-    const deletedTokens = deleteTokenRows(tx, tokenIds);
+    const deletedTokens = deleteTokensWhere(tx, eq(tokens.batchId, batchId));
     tx.delete(batches).where(eq(batches.id, batchId)).run();
     return { deletedTokens };
   });
@@ -578,7 +564,7 @@ export async function deleteToken(tokenId: string): Promise<{ deletedBatch: bool
     if (!tokenRow) {
       return null;
     }
-    deleteTokenRows(tx, [tokenId]);
+    deleteTokensWhere(tx, eq(tokens.id, tokenId));
     let deletedBatch = false;
     if (tokenRow.batchId) {
       const remaining = tx.select({ id: tokens.id }).from(tokens).where(eq(tokens.batchId, tokenRow.batchId)).limit(1).all();

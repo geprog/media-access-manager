@@ -31,6 +31,8 @@ export function useDb() {
   return db;
 }
 
+export type DbTransaction = Parameters<Parameters<ReturnType<typeof useDb>['transaction']>[0]>[0];
+
 export function generateId(): string {
   return randomBytes(12).toString('hex');
 }

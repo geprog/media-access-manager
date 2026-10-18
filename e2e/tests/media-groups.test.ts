@@ -242,8 +242,7 @@ test.describe('Media groups', () => {
     await openGroupViaUI(page, groupName);
     const token = await createTokenViaUI(page, `E2E Doomed Batch ${suffix}`, 1);
 
-    // The token panel below has delete buttons of its own; the page's comes first.
-    await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/groups', { timeout: 10000 });
