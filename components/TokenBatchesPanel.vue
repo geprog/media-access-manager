@@ -51,6 +51,7 @@
             </div>
             <BatchTokensTable
               :tokens="matchingTokensByBatch.get(item.value) ?? []"
+              :filter="tokenFilter"
               :columns="tokenColumns"
               :loading="tokensLoading"
             />
@@ -331,7 +332,7 @@ import type { BatchSettings, TokenRow, ValidityConflicts } from '~/utils/tokens'
 import { format } from 'date-fns';
 import { h, resolveComponent } from 'vue';
 import { computeQRGridCells, DEFAULT_QR_GRID_SPACING, LABEL_POSITIONS, parseQRGridSpacing, QR_GRID_SPACING_MAX_CM } from '~/utils/qrGrid';
-import { getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
+import { getBatchDisplayName, getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from '~/utils/tokens';
 
 const props = defineProps<{
   /** Set for a single media's tokens; mutually exclusive with `groupId`. */
@@ -659,8 +660,8 @@ const batchAccordionItems = computed(() =>
     .filter(b => !isSearching.value || matchingTokensByBatch.value.has(b.id))
     .map(b => ({
       label: isSearching.value
-        ? `${b.name || b.id} (${matchingTokensByBatch.value.get(b.id)?.length ?? 0} / ${b.count} ${t('batches_tokens_count')})`
-        : `${b.name || b.id} (${b.count} ${t('batches_tokens_count')})`,
+        ? `${getBatchDisplayName(b)} (${matchingTokensByBatch.value.get(b.id)?.length ?? 0} / ${b.count} ${t('batches_tokens_count')})`
+        : `${getBatchDisplayName(b)} (${b.count} ${t('batches_tokens_count')})`,
       value: b.id,
     })),
 );
@@ -741,6 +742,8 @@ async function runDeletion(request: () => Promise<void>) {
     // Settled rather than awaited plainly, so a refresh failing after the
     // deletion went through cannot report the deletion as failed.
     await Promise.allSettled([refreshBatches(), refreshTokens()]);
+    // Whichever batches went, now or earlier, are no longer open.
+    openBatchIds.value = openBatchIds.value.filter(id => batches.value?.some(b => b.id === id));
   }
 }
 
@@ -748,8 +751,7 @@ function openBatchDeleteModal(batchId: string) {
   const batch = batches.value?.find(b => b.id === batchId);
   if (!batch)
     return;
-  // A batch from before names were required is listed by its id, so that is what to type.
-  const name = batch.name.trim() || batch.id;
+  const name = getBatchDisplayName(batch);
   openDeleteModal({
     title: t('batch_delete_title'),
     message: t('batch_delete_confirm', { name, count: batch.count }, batch.count),
@@ -759,7 +761,6 @@ function openBatchDeleteModal(batchId: string) {
     action: () => runDeletion(async () => {
       await $fetch(`/api/batches/${batchId}`, { method: 'DELETE' });
       toast.add({ title: t('batch_deleted', { name }), color: 'success' });
-      openBatchIds.value = openBatchIds.value.filter(id => id !== batchId);
     }),
   });
 }
@@ -769,7 +770,7 @@ function openTokenDeleteModal(token: TokenRow) {
   // Looked up now, while the batch is still in the list: once the deletion
   // took it along, there is nothing left to name it by.
   const batch = batches.value?.find(b => b.id === token.batchId);
-  const batchName = batch?.name.trim() || token.batchId;
+  const batchName = batch ? getBatchDisplayName(batch) : token.batchId;
   openDeleteModal({
     title: t('token_delete_title'),
     message: t('token_delete_confirm', { name }),
@@ -782,7 +783,6 @@ function openTokenDeleteModal(token: TokenRow) {
       const { deletedBatch } = await $fetch(`/api/tokens/${token.id}`, { method: 'DELETE' });
       if (deletedBatch && token.batchId) {
         toast.add({ title: t('token_deleted_with_batch', { name, batchName }), color: 'success' });
-        openBatchIds.value = openBatchIds.value.filter(id => id !== token.batchId);
       }
       else {
         toast.add({ title: t('token_deleted', { name }), color: 'success' });

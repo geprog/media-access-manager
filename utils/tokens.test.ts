@@ -1,6 +1,6 @@
 import type { TokenRow } from './tokens';
 import { describe, expect, it } from 'vitest';
-import { getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from './tokens';
+import { getBatchDisplayName, getBatchSettings, getUsageLimitConflicts, getValidityConflicts, groupMatchingTokensByBatch } from './tokens';
 
 function token(value: string, batchId: string | null) {
   return { token: value, batchId };
@@ -186,5 +186,16 @@ describe('getUsageLimitConflicts', () => {
       row({ usageLimit: 5, usageCount: 4, maxMediaUsageCount: 4 }),
     ];
     expect(getUsageLimitConflicts(tokens, 3)).toBe(1);
+  });
+});
+
+describe('getBatchDisplayName', () => {
+  it('names a batch by its name, without surrounding spaces', () => {
+    expect(getBatchDisplayName({ id: 'b1', name: ' Workshop 2025 ' })).toBe('Workshop 2025');
+  });
+
+  it('falls back to the id for a batch without a name worth showing', () => {
+    expect(getBatchDisplayName({ id: 'b1', name: '' })).toBe('b1');
+    expect(getBatchDisplayName({ id: 'b1', name: '   ' })).toBe('b1');
   });
 });

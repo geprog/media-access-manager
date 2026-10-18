@@ -139,3 +139,12 @@ export function getUsageLimitConflicts(tokens: TokenRow[], usageLimit: number | 
     return used >= usageLimit && !wasUsedUp;
   }).length;
 }
+
+/**
+ * What a batch is listed as, and so what deleting it asks the admin to type. A
+ * batch from before names were trimmed may have none worth showing, and is
+ * then named by its id.
+ */
+export function getBatchDisplayName(batch: { id: string, name: string }): string {
+  return batch.name.trim() || batch.id;
+}

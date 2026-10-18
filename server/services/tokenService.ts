@@ -567,8 +567,8 @@ export async function deleteToken(tokenId: string): Promise<{ deletedBatch: bool
     deleteTokensWhere(tx, eq(tokens.id, tokenId));
     let deletedBatch = false;
     if (tokenRow.batchId) {
-      const remaining = tx.select({ id: tokens.id }).from(tokens).where(eq(tokens.batchId, tokenRow.batchId)).limit(1).all();
-      if (remaining.length === 0) {
+      const remaining = tx.select({ id: tokens.id }).from(tokens).where(eq(tokens.batchId, tokenRow.batchId)).get();
+      if (!remaining) {
         deletedBatch = tx.delete(batches).where(eq(batches.id, tokenRow.batchId)).run().changes > 0;
       }
     }
