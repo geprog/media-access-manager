@@ -56,7 +56,7 @@
           :price-month="data.group.priceMonth"
           :price-year="data.group.priceYear"
         />
-        <TokenBatchesPanel :group-id="id" />
+        <TokenBatchesPanel :group-id="id" :default-label="data.group.name" />
       </div>
     </UCard>
 

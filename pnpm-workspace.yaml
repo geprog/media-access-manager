@@ -1,15 +1,9 @@
 minimumReleaseAge: 1440
-
-minimumReleaseAgeExclude:
-  - ioredis@5.10.0
-
-shellEmulator: true
-
-strictPeerDependencies: true
-
+minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
-
 trustPolicyIgnoreAfter: 267840
+strictPeerDependencies: true
+shellEmulator: true
 
 allowBuilds:
   '@parcel/watcher': true

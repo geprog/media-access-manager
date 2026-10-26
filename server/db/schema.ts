@@ -1,5 +1,6 @@
+import type { ValidityDuration } from '../../utils/accessWindow';
 import { sql } from 'drizzle-orm';
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export interface ProviderConfig<Provider extends string> {
   providerId: Provider
@@ -70,7 +71,21 @@ export const tokens = sqliteTable('tokens', {
   batchId: text('batch_id').references(() => batches.id),
   name: text('name').notNull(),
   startsAt: integer('starts_at', { mode: 'timestamp' }),
+  /**
+   * Stays `null` on a token waiting for its first use until that use sets it
+   * from `validFor`.
+   */
   expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  /**
+   * How long the token lasts from its first use, set only on a token whose
+   * validity starts then instead of on creation.
+   */
+  validFor: text('valid_for', { mode: 'json' }).$type<ValidityDuration>(),
+  /**
+   * When the token was first opened, so a first-use duration changed later can
+   * still be counted from that view. Stays `null` until then.
+   */
+  firstUsedAt: integer('first_used_at', { mode: 'timestamp' }),
   /**
    * On a group token this is the limit for *each* media of the group, not for
    * the token as a whole.
@@ -94,6 +109,23 @@ export const tokenMediaUsage = sqliteTable('token_media_usage', {
   mediaId: text('media_id').notNull().references(() => media.id),
   usageCount: integer('usage_count').notNull().default(0),
 }, table => [primaryKey({ columns: [table.tokenId, table.mediaId] })]);
+
+/**
+ * One spent view: which token opened which media, and when. This is the
+ * history behind every `usageCount` — what an admin reads when a visitor asks
+ * where their views went — and the source of the usage statistics. Deliberately
+ * nothing about the visitor: no address, no device, only the moment.
+ */
+export const tokenViews = sqliteTable('token_views', {
+  id: text('id').primaryKey(),
+  tokenId: text('token_id').notNull().references(() => tokens.id),
+  /** The media opened: a single-media token's own, or the one picked from a group. */
+  mediaId: text('media_id').notNull().references(() => media.id),
+  viewedAt: integer('viewed_at', { mode: 'timestamp' }).notNull(),
+}, table => [
+  index('token_views_token_id_idx').on(table.tokenId),
+  index('token_views_viewed_at_idx').on(table.viewedAt),
+]);
 
 /**
  * One row per *paid* Mollie payment that extended a token — and nothing about
@@ -120,3 +152,4 @@ export type Token = typeof tokens.$inferSelect;
 export type TokenInsert = typeof tokens.$inferInsert;
 export type TokenMediaUsage = typeof tokenMediaUsage.$inferSelect;
 export type TokenPurchase = typeof tokenPurchases.$inferSelect;
+export type TokenView = typeof tokenViews.$inferSelect;

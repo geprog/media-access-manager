@@ -14,11 +14,33 @@
         <UButton variant="link" :to="groupLink" :label="$t('public_group_back')" />
       </template>
     </PublicAccessDenied>
+    <!-- Watching would spend one of this media's limited views or start the
+         access window, so the visitor is asked first. -->
+    <PublicViewConfirmation
+      v-else-if="access.confirmationRequired"
+      :title="access.title"
+      :expires-at="access.access.expiresAt"
+      :valid-for="access.access.validFor"
+      :usage-limit="access.access.usageLimit"
+      :usage-count="access.access.usageCount"
+      :loading="confirming"
+      @confirm="confirm"
+    >
+      <template #actions>
+        <UButton
+          variant="link"
+          icon="i-heroicons-arrow-left"
+          :to="groupLink"
+          :label="$t('public_group_back')"
+        />
+      </template>
+    </PublicViewConfirmation>
     <PublicMediaPlayer
       v-else
       :title="access.title"
       :embed="access.embed"
       :expires-at="access.access.expiresAt"
+      :valid-for="access.access.validFor"
       :usage-limit="access.access.usageLimit"
       :usage-count="access.access.usageCount"
     >
@@ -46,21 +68,22 @@ const route = useRoute();
 const token = computed(() => route.params.token as string);
 const mediaId = computed(() => route.params.mediaId as string);
 
+const accessUrl = () => `/api/access/${encodeURIComponent(token.value)}/${encodeURIComponent(mediaId.value)}` as const;
+
 /**
- * Opening this page is what spends a view, so it is fetched fresh every time
- * rather than served from the cache of an earlier visit.
+ * Opening this page can spend a view, so it is fetched fresh every time rather
+ * than served from the cache of an earlier visit.
  */
-const { data: access, error, status } = useFetch(
-  () => `/api/access/${encodeURIComponent(token.value)}/${encodeURIComponent(mediaId.value)}`,
-  { getCachedData: () => undefined },
-);
+const { data: access, error, status } = useFetch(accessUrl, { getCachedData: () => undefined });
+
+const { confirming, error: confirmError, confirm } = useViewConfirmation(accessUrl, access);
 
 const loading = computed(() => status.value === 'pending');
 
 const groupLink = computed(() => `/${encodeURIComponent(token.value)}`);
 
 const denial = computed(() => {
-  const body = error.value?.data as {
+  const body = (confirmError.value ?? error.value)?.data as {
     data?: {
       reason?: string
       title?: string | null

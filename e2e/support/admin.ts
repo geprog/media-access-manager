@@ -106,7 +106,7 @@ export async function createTokenViaUI(
   page: Page,
   batchName: string,
   count = 1,
-  options: { usageLimit?: number } = {},
+  options: { usageLimit?: number, validForDays?: number } = {},
 ): Promise<string> {
   await page.getByRole('button', { name: 'Create new Tokens' }).click();
   const dialog = page.getByRole('dialog');
@@ -114,6 +114,11 @@ export async function createTokenViaUI(
   await dialog.getByLabel('Count').fill(String(count));
   if (options.usageLimit != null) {
     await dialog.getByLabel('Usage limit').fill(String(options.usageLimit));
+  }
+  if (options.validForDays != null) {
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    // Days is the preselected unit, so only the number needs filling in.
+    await dialog.getByLabel('Valid for').fill(String(options.validForDays));
   }
   await dialog.getByRole('button', { name: 'Create new Tokens' }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
@@ -133,6 +138,30 @@ export function videoEmbed(iframeTitle: string) {
     width: 640,
     height: 360,
   };
+}
+
+/**
+ * Stands in for the provider once a visitor confirmed they want to watch: only
+ * the POST that spends the view hands out an embed. The preview before it is
+ * served by the real server, which asks the provider for nothing.
+ */
+export async function mockConfirmedView(page: Page, urlPattern: RegExp, iframeTitle: string) {
+  await page.route(urlPattern, async (route) => {
+    if (route.request().method() !== 'POST') {
+      return route.fallback();
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        confirmationRequired: false,
+        title: iframeTitle,
+        embed: videoEmbed(iframeTitle),
+        access: { expiresAt: null, validFor: null, usageLimit: 2, usageCount: 1 },
+      }),
+    });
+  });
 }
 
 export interface StubReport {

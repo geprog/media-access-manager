@@ -7,6 +7,7 @@ import {
   login,
   mockAccessibility,
   mockAvailableMedia,
+  mockConfirmedView,
   pickAvailableVideo,
   PROVIDER_SETTINGS_URL,
   providerVideo,
@@ -42,7 +43,12 @@ async function openMediaViaUI(page: Page, title: string) {
   await expect(page).toHaveURL(/\/media\/[^/]+/);
 }
 
-interface AccessWindow { expiresAt: string | null, usageLimit: number | null, usageCount: number }
+interface AccessWindow {
+  expiresAt: string | null
+  validFor?: Record<string, number> | null
+  usageLimit: number | null
+  usageCount: number
+}
 
 /** A token with no expiry and no usage limit, i.e. the plainest access window. */
 function openAccess(): AccessWindow {
@@ -190,6 +196,315 @@ test.describe('Media and Tokens', () => {
     await expect(page.getByRole('button').filter({ hasText: otherBatch })).toBeVisible();
   });
 
+  test('edits the name and settings of a batch', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 2 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    const dialog = page.getByRole('dialog');
+    // The dialog opens on what the batch has now.
+    await expect(dialog.getByLabel('Batch name')).toHaveValue(batchName);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('2');
+
+    const renamed = `${batchName} renamed`;
+    await dialog.getByLabel('Batch name').fill(renamed);
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    const batchButton = page.getByRole('button').filter({ hasText: renamed });
+    await expect(batchButton).toBeVisible();
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row).toContainText('0 / 5');
+      await expect(row).toContainText('14 days after first use');
+    }
+  });
+
+  test('edits the settings of a single token', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 3, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(3);
+    const edited = rows.first();
+    const tokenValue = await edited.locator('code').textContent();
+
+    await edited.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    // A token has no name of its own to change, only its settings.
+    await expect(dialog.getByLabel('Batch name')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('2');
+
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    const editedRow = rows.filter({ hasText: tokenValue! });
+    await expect(editedRow).toContainText('0 / 5');
+    await expect(editedRow).toContainText('14 days after first use');
+    // The rest of the batch keeps what it had.
+    const otherRows = rows.filter({ hasNotText: tokenValue! });
+    await expect(otherRows).toHaveCount(2);
+    for (const row of await otherRows.all()) {
+      await expect(row).toContainText('0 / 2');
+      await expect(row).not.toContainText('after first use');
+    }
+  });
+
+  test('deletes a single token once its value is typed in', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    const deleted = rows.filter({ has: page.getByRole('cell', { name: '1', exact: true }) });
+    const tokenValue = await deleted.locator('code').textContent();
+
+    await deleted.getByRole('button', { name: 'Delete token' }).click();
+    const dialog = page.getByRole('dialog');
+    const confirm = dialog.getByRole('button', { name: 'Delete token' });
+    const input = dialog.getByLabel(`Type "${tokenValue}" to confirm`);
+    await expect(confirm).toBeDisabled();
+    // Its name alone is shared by the first token of every batch, so it does not count.
+    await input.fill('1');
+    await expect(confirm).toBeDisabled();
+    await input.fill(tokenValue!);
+    await confirm.click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await expect(rows).toHaveCount(1);
+    await expect(rows.filter({ hasText: tokenValue! })).toHaveCount(0);
+    await expect(page.getByRole('button').filter({ hasText: `${batchName} (1 tokens)` })).toBeVisible();
+
+    await page.goto(`/${tokenValue}`);
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test('deletes a whole batch once its name is typed in', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 2);
+
+    await page.getByRole('button', { name: 'Delete batch' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText(batchName);
+    const confirm = dialog.getByRole('button', { name: 'Delete batch' });
+    await expect(confirm).toBeDisabled();
+    // Cancelling must leave the batch untouched.
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('button').filter({ hasText: batchName })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Delete batch' }).click();
+    await dialog.getByLabel(`Type "${batchName}" to confirm`).fill(batchName);
+    await confirm.click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await expect(page.getByRole('button').filter({ hasText: batchName })).toHaveCount(0);
+
+    await page.goto(`/${token}`);
+    await expect(page.getByText(/no longer valid/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test('leaves settings empty that the tokens of a batch do not share', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    const edited = rows.first();
+    const tokenValue = await edited.locator('code').textContent();
+    const editedRow = rows.filter({ hasText: tokenValue! });
+    const otherRow = rows.filter({ hasNotText: tokenValue! });
+
+    await edited.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await dialog.getByLabel('Valid for').fill('14');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByText('Tokens of this batch have different settings')).toBeVisible();
+    await expect(dialog.getByText('The usage limit differs between tokens.')).toBeVisible();
+    await expect(dialog.getByText('The validity differs between tokens.')).toBeVisible();
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('');
+    await expect(dialog.getByRole('radio', { name: 'Keep each token\'s own' })).toBeChecked();
+
+    // Moving off "keep", the duration starts from the default rather than empty.
+    await dialog.getByRole('radio', { name: 'On first use' }).check();
+    await expect(dialog.getByLabel('Valid for')).toHaveValue('7');
+    await dialog.getByRole('radio', { name: 'Keep each token\'s own' }).check();
+
+    // Left empty, every token keeps its own settings.
+    const renamed = `${batchName} renamed`;
+    await dialog.getByLabel('Batch name').fill(renamed);
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button').filter({ hasText: renamed })).toBeVisible();
+    await expect(editedRow).toContainText('0 / 5');
+    await expect(editedRow).toContainText('14 days after first use');
+    await expect(otherRow).toContainText('0 / 2');
+    await expect(otherRow).not.toContainText('after first use');
+
+    // Filled in, a setting applies to every token again.
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await dialog.getByLabel('Usage limit').fill('3');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    await expect(editedRow).toContainText('0 / 3');
+    await expect(otherRow).toContainText('0 / 3');
+    // The validity was still left alone.
+    await expect(editedRow).toContainText('14 days after first use');
+    await expect(otherRow).not.toContainText('after first use');
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByText('The usage limit differs between tokens.')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('3');
+  });
+
+  test('lifts a usage limit the tokens of a batch do not share', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 2 });
+
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    await rows.first().getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Usage limit').fill('5');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await dialog.getByRole('checkbox', { name: 'Lift the limit of every token' }).check();
+    await expect(dialog.getByLabel('Usage limit')).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    for (const row of await rows.all()) {
+      await expect(row).not.toContainText(' / ');
+    }
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await expect(dialog.getByText('Tokens of this batch have different settings')).toHaveCount(0);
+    await expect(dialog.getByLabel('Usage limit')).toHaveValue('');
+  });
+
+  test('asks before an edit expires tokens already handed out', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Expires at').fill('2020-01-01T10:00');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+
+    // Nothing is saved yet: the dialog stays open and names what would happen.
+    await expect(dialog.getByText('2 tokens that are valid now would expire immediately.')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Save anyway' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row).toContainText('2020');
+    }
+  });
+
+  test('asks before a lower usage limit uses up tokens', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    // Spending real views would mean playing the video through the provider,
+    // so the token list reports two views per token instead.
+    await page.route(/\/api\/tokens\?/, async (route) => {
+      const response = await route.fetch();
+      const rows: Array<Record<string, unknown>> = await response.json();
+      await route.fulfill({ response, json: rows.map(row => ({ ...row, usageCount: 2 })) });
+    });
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2, { usageLimit: 5 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Usage limit').fill('3');
+    // Still above the views spent, so nothing to warn about.
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Edit batch' }).click();
+    await dialog.getByLabel('Usage limit').fill('2');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog.getByText('2 tokens have already reached the new limit and would stop working.')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Save anyway' }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    const rows = page.getByRole('row').filter({ has: page.locator('code') });
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row).toContainText('2 / 2');
+    }
+  });
+
   test('use token to see media', async ({ page }, testInfo) => {
     await login(page);
 
@@ -323,9 +638,9 @@ test.describe('Media and Tokens', () => {
     const token = await createTokenViaUI(page, batchName, 1);
     expect(token).toBeTruthy();
 
-    // An hour past the three days so the page cannot round down to two while
-    // the browser is still navigating.
-    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000);
+    // Half an hour past the five hours so the page cannot round down to four
+    // while the browser is still navigating.
+    const expiresAt = new Date(Date.now() + (3 * 24 * 60 + 5 * 60 + 30) * 60 * 1000);
     await mockAccess(page, {
       title,
       embed: videoEmbed('E2E Countdown Video'),
@@ -335,7 +650,8 @@ test.describe('Media and Tokens', () => {
     await page.goto(`/${token}`);
 
     await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('3 days left')).toBeVisible();
+    // The largest unit alone would hide most of a day, so the next one is named too.
+    await expect(page.getByText('3 days, 5 hours left')).toBeVisible();
     await expect(page.getByText('can be opened 3 more times')).toBeVisible();
   });
 
@@ -374,6 +690,92 @@ test.describe('Media and Tokens', () => {
 
     await expect(page.getByText('can be opened 3 more times')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('This link does not expire')).toHaveCount(0);
+  });
+
+  test('starts a token\'s validity on its first use', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1, { validForDays: 3 });
+    expect(token).toBeTruthy();
+
+    // Nobody opened the token yet, so it has a duration but no date.
+    await expect(page.getByRole('cell', { name: '3 days after first use' })).toBeVisible();
+
+    // An admin previewing the link does not start it, so the page still
+    // describes the window by its duration.
+    await mockAccess(page, {
+      title,
+      embed: videoEmbed('E2E First Use Video'),
+      access: { expiresAt: null, validFor: { days: 3 }, usageLimit: null, usageCount: 0 },
+    });
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText('Available for 3 days from the first time you watch')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('This link does not expire')).toHaveCount(0);
+  });
+
+  test('asks before spending one of a limited number of views', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1, { usageLimit: 2 });
+    expect(token).toBeTruthy();
+
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    // The visitor sees what the link leads to and what watching costs, but the
+    // player only comes once they ask for it.
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('2 views left')).toBeVisible();
+    await expect(page.getByText('Watching now uses one of your 2 remaining views.')).toBeVisible();
+    await expect(page.locator('iframe')).toHaveCount(0);
+
+    // Opening the link again spent nothing.
+    await page.reload();
+    await expect(page.getByText('2 views left')).toBeVisible({ timeout: 5000 });
+
+    await mockConfirmedView(page, /\/api\/access\/[^/]+$/, 'E2E Confirmed Video');
+    await page.getByRole('button', { name: 'Watch now' }).click();
+
+    await expect(page.locator('iframe[title="E2E Confirmed Video"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('can be opened 1 more time')).toBeVisible();
+  });
+
+  test('asks before starting a validity that runs from first use', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    const token = await createTokenViaUI(page, batchName, 1, { validForDays: 3 });
+    expect(token).toBeTruthy();
+
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Available for 3 days from the first time you watch')).toBeVisible();
+    await expect(page.getByText(/Your access of 3 days starts the first time you watch\. If you start now, it lasts until/))
+      .toBeVisible();
+    // No views are counted, so there is none to warn about.
+    await expect(page.getByText(/remaining views|last view/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Start access now' })).toBeVisible();
+    await expect(page.locator('iframe')).toHaveCount(0);
   });
 
   test('reports an unavailable video instead of blaming the token', async ({ page }, testInfo) => {
@@ -415,14 +817,14 @@ test.describe('Media and Tokens', () => {
     expect(token).toBeTruthy();
 
     // Cancelling must leave the media untouched.
-    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText(title)).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page).toHaveURL('/', { timeout: 10000 });
@@ -533,5 +935,85 @@ test.describe('Media and Tokens', () => {
     expect(archive.signature).toBe('PK');
     // Two QR codes at 5 cm and 300 dpi. An empty archive is a few hundred bytes.
     expect(archive.length).toBeGreaterThan(10_000);
+  });
+
+  /**
+   * Sticker sheets state their margins and gaps, and the grid has to land on
+   * them, so the export dialog hands every figure to the PDF it opens.
+   */
+  test('exports a batch as a PDF grid laid onto a sticker sheet', async ({ page }, testInfo) => {
+    await login(page);
+
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+
+    await openMediaViaUI(page, title);
+
+    const batchName = `Batch ${uniqueId(testInfo.testId)}`;
+    await createTokenViaUI(page, batchName, 2);
+
+    await page.getByRole('button', { name: new RegExp(batchName) }).click();
+    await page.getByRole('button', { name: 'Export QR Codes' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByText('PDF (grid on A4)').click();
+
+    await dialog.getByLabel('Columns per page').fill('3');
+    await dialog.getByLabel('Rows per page').fill('8');
+    await dialog.getByLabel('Top', { exact: true }).fill('0.45');
+    await dialog.getByLabel('Bottom', { exact: true }).fill('0.45');
+    await dialog.getByLabel('Left', { exact: true }).fill('0');
+    await dialog.getByLabel('Right', { exact: true }).fill('0');
+    await dialog.getByLabel('Horizontal', { exact: true }).fill('0');
+    await dialog.getByLabel('Vertical', { exact: true }).fill('0');
+    await expect(dialog.getByText('Resulting label size: 7 × 3.6 cm')).toBeVisible();
+
+    // Margins wider than the page leave nothing to print on.
+    await dialog.getByLabel('Left', { exact: true }).fill('10');
+    await dialog.getByLabel('Right', { exact: true }).fill('10');
+    await dialog.getByLabel('Horizontal', { exact: true }).fill('1');
+    await expect(dialog.getByText(/leave no room for the labels/)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Download' })).toBeDisabled();
+
+    await dialog.getByLabel('Left', { exact: true }).fill('0');
+    await dialog.getByLabel('Right', { exact: true }).fill('0');
+    await dialog.getByLabel('Horizontal', { exact: true }).fill('0');
+
+    // The label starts out as the media's title.
+    await dialog.getByLabel('Print label next to QR code').check();
+    await expect(dialog.getByLabel('Label', { exact: true })).toHaveValue(title);
+    await dialog.getByLabel('Below', { exact: true }).check();
+
+    // The PDF opens in a new tab, whose request carries the layout.
+    const request = page.context().waitForEvent('request', r => r.url().includes('/qr-pdf'));
+    await dialog.getByRole('button', { name: 'Download' }).click();
+    const url = new URL((await request).url());
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      layout: 'grid',
+      cols: '3',
+      rows: '8',
+      marginTop: '0.45',
+      marginBottom: '0.45',
+      marginLeft: '0',
+      marginRight: '0',
+      gapX: '0',
+      gapY: '0',
+      label: title,
+      labelPosition: 'bottom',
+    });
+    // The PDF fonts only cover Latin-1, so other characters must not break it.
+    url.searchParams.set('label', `${title} → 日本語 🎬`);
+
+    const pdf = await page.evaluate(async (path) => {
+      const response = await fetch(path);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return {
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        signature: String.fromCharCode(...bytes.slice(0, 4)),
+      };
+    }, `${url.pathname}${url.search}`);
+    expect(pdf.status).toBe(200);
+    expect(pdf.contentType).toBe('application/pdf');
+    expect(pdf.signature).toBe('%PDF');
   });
 });

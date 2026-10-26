@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "deaa0e86-4cef-439a-b59f-57fb3d7c890c",
+  "id": "3fa4c360-cf6a-4be3-a272-83dc399fd59d",
   "prevId": "abfe02d8-1d86-4fab-8524-d40e7cf3fca1",
   "tables": {
     "batches": {
@@ -99,20 +99,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "price_month": {
-          "name": "price_month",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "price_year": {
-          "name": "price_year",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "created_at": {
@@ -214,20 +200,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "price_month": {
-          "name": "price_month",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "price_year": {
-          "name": "price_year",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -310,73 +282,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "token_purchases": {
-      "name": "token_purchases",
-      "columns": {
-        "payment_id": {
-          "name": "payment_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "token_id": {
-          "name": "token_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "period": {
-          "name": "period",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_before": {
-          "name": "expires_before",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expires_after": {
-          "name": "expires_after",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "token_purchases_token_id_tokens_id_fk": {
-          "name": "token_purchases_token_id_tokens_id_fk",
-          "tableFrom": "token_purchases",
-          "tableTo": "tokens",
-          "columnsFrom": [
-            "token_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "tokens": {
       "name": "tokens",
       "columns": {
@@ -432,6 +337,13 @@
         "expires_at": {
           "name": "expires_at",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "valid_for": {
+          "name": "valid_for",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

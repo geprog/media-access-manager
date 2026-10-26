@@ -28,6 +28,8 @@ const props = defineProps<{
   tokens: TokenRow[]
   columns: TableColumn<TokenRow>[]
   loading?: boolean
+  /** The search `tokens` were narrowed down by. */
+  filter?: string
 }>();
 
 const { t } = useI18n();
@@ -37,10 +39,16 @@ const PAGE_SIZE = 5;
 const page = ref(1);
 const pageStart = computed(() => (page.value - 1) * PAGE_SIZE);
 
-// A narrower search can leave the current page past the last token.
+// A new search starts over at its first hits.
+watch(() => props.filter, () => {
+  page.value = 1;
+});
+
+// A deleted token can leave the current page past the last token; the last
+// page left is the closest to where the admin was.
 watch(() => props.tokens, () => {
   if (pageStart.value >= props.tokens.length) {
-    page.value = 1;
+    page.value = Math.max(1, Math.ceil(props.tokens.length / PAGE_SIZE));
   }
 });
 
