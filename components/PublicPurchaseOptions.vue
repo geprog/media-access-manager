@@ -3,10 +3,26 @@
     <h2 class="text-lg font-semibold">
       {{ $t('public_purchase_title') }}
     </h2>
-    <p class="text-sm text-muted">
+    <!-- Mollie keeps a payment open after a failed or canceled attempt, until
+         it expires. Starting another one could have the visitor pay twice, so
+         the one they began is continued instead, where they can try again. -->
+    <template v-if="openPayment">
+      <p class="text-sm text-muted">
+        {{ openPayment.status === 'open' ? $t('public_purchase_open') : $t('public_purchase_processing') }}
+      </p>
+      <UButton
+        v-if="openPayment.resumable"
+        icon="i-heroicons-arrow-right"
+        size="lg"
+        :loading="pendingPeriod !== null"
+        :label="openPayment.status === 'open' ? $t('public_purchase_continue') : $t('public_purchase_details')"
+        @click="purchase(openPayment.period)"
+      />
+    </template>
+    <p v-else class="text-sm text-muted">
       {{ $t('public_purchase_intro') }}
     </p>
-    <div class="flex flex-wrap justify-center gap-2">
+    <div v-if="!openPayment" class="flex flex-wrap justify-center gap-2">
       <UButton
         v-for="option in options"
         :key="option.period"
@@ -42,9 +58,19 @@ export interface PurchaseOption {
   currency: string
 }
 
+/** A payment the visitor started and has not finished, as the access endpoint sends it. */
+export interface OpenPayment {
+  period: PurchaseOption['period']
+  /** `open`: to be continued at Mollie. `pending`: the money is on its way. */
+  status: 'open' | 'pending'
+  /** Whether Mollie's checkout still has something to show for it. */
+  resumable: boolean
+}
+
 const props = defineProps<{
   token: string
   options: PurchaseOption[]
+  openPayment?: OpenPayment | null
 }>();
 
 const { t, locale } = useI18n();
@@ -61,7 +87,8 @@ function optionLabel(option: PurchaseOption) {
 
 /**
  * Only the period is sent: what it costs is the server's to decide. The
- * visitor leaves for Mollie's checkout and comes back to this token's page.
+ * visitor leaves for Mollie's checkout — of the payment they already started,
+ * while there is one — and comes back to this token's page.
  */
 async function purchase(period: PurchaseOption['period']) {
   pendingPeriod.value = period;

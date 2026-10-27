@@ -1,5 +1,5 @@
 import { denialFor, getGroupTokenAccess, getGroupWindowReason } from '../../services/tokenService';
-import { denied, isAdminRequest, openMediaToken, purchaseOptionsFor } from '../../utils/publicAccess';
+import { denied, isAdminRequest, openMediaToken, purchaseOfferFor } from '../../utils/publicAccess';
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token');
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
         // Admins check their own links here, so they get the way back into the
         // group instead of a support mail.
         groupId: isAdmin ? denial.groupId : null,
-        purchaseOptions: await purchaseOptionsFor(tokenRow, isAdmin),
+        ...await purchaseOfferFor(tokenRow, isAdmin),
       });
     }
     return {
@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
       })),
       // Some media used up while the window is still open: buying again is
       // offered beside the list, the same way as on an expired link.
-      purchaseOptions: await purchaseOptionsFor(tokenRow, isAdmin),
+      ...await purchaseOfferFor(tokenRow, isAdmin),
     };
   }
 

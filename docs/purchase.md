@@ -66,12 +66,44 @@ anything else:
 | Payment status                  | Page shows                                                     |
 | ------------------------------- | -------------------------------------------------------------- |
 | `paid`                          | the content right away                                         |
-| `open`, `pending`, `authorized` | "payment is being processed", checking again every few seconds |
+| `pending`, `authorized`         | "payment is being processed", checking again every few seconds |
+| `open` (left without paying)    | "you started a payment" with **Continue payment**              |
 | `canceled`, `expired`, `failed` | "payment was not completed" above the purchase options again   |
 
+### A payment left open
+
+Mollie keeps a payment `open` after a failed or canceled attempt and sends the
+customer back to its checkout to try again; its own "back" link returns them
+here with the payment still open
+([Mollie: redirect after a failed or canceled attempt](https://docs.mollie.com/docs/handling-payment-status#redirect-back-to-hosted-checkout-page-after-failed-or-canceled-attempt)).
+Such a payment is not over: it can still be paid until Mollie lets it expire,
+after a time that depends on the method — 15 minutes for iDEAL, six hours for
+PayPal, twelve days for a bank transfer
+([Mollie: when does a payment expire](https://docs.mollie.com/docs/handling-payment-status#when-does-a-payment-expire)).
+
+So the app does not guess. The token remembers the payment it started until
+Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
+
+- the purchase buttons give way to **Continue payment**, which leads to that
+  payment's checkout (the one stored at creation, see §3), where the visitor pays, tries another method or leaves
+  it to expire. Starting a second payment instead could have them pay twice.
+- a bank transfer, `open` until the money arrives, shows "being processed"
+  and **Show payment details**, which is Mollie's page with the transfer data.
+- nothing sends the visitor to Mollie unasked: their "back" link would only
+  bring them straight back again.
+
+Mollie announces the end through the webhook. Where none gets through — a
+local setup, or a webhook lost — the token page asks Mollie about the payment
+whenever it loads, so expiry is noticed there as well; and a payment paid
+without the visitor coming back is applied the same way.
+
+An open payment cannot simply be canceled on the visitor's behalf: Mollie only
+lets a few methods be canceled through its API (a fresh payment without a
+method cannot), so its expiry is what ends it.
+
 If the update of the `redirectUrl` fails, the visitor comes back without the
-id. The webhook still extends the token, and the page they return to simply
-shows it as valid once that has happened.
+id. The token still knows its open payment, and the page they return to asks
+Mollie about it.
 
 ---
 
@@ -97,12 +129,12 @@ never touches the others of that batch.
 
 ## 3. Privacy: what is stored where
 
-| Data                              | This app                    | Mollie                         |
-| --------------------------------- | --------------------------- | ------------------------------ |
-| Name, e-mail, IBAN, card, address | never                       | as far as the payment needs it |
-| Amount paid                       | never (only the price list) | yes                            |
-| Mollie payment id (`tr_…`)        | yes, once paid              | yes                            |
-| Token value, media/group id       | yes (already)               | in the payment's `metadata`    |
+| Data                              | This app                      | Mollie                         |
+| --------------------------------- | ----------------------------- | ------------------------------ |
+| Name, e-mail, IBAN, card, address | never                         | as far as the payment needs it |
+| Amount paid                       | never (only the price list)   | yes                            |
+| Mollie payment id (`tr_…`)        | yes, while open and once paid | yes                            |
+| Token value, media/group id       | yes (already)                 | in the payment's `metadata`    |
 
 The app keeps one row per **paid** payment in `token_purchases`:
 
@@ -115,10 +147,17 @@ The app keeps one row per **paid** payment in `token_purchases`:
 | `expires_after`   | and after it                                                       |
 | `created_at`      | when                                                               |
 
+While a payment is open, `tokens.open_payment_id` holds its id and
+`tokens.open_payment_checkout_url` the checkout Mollie returned when creating
+it, so buying again leads back to it. The URL is kept because Mollie's API
+stops returning `_links.checkout` once an attempt failed or was canceled,
+while the page itself still lets the visitor try again. Both are cleared as
+soon as Mollie reports the payment over; one that expired leaves nothing
+behind.
+
 A payment id is an opaque reference. It says nothing about who paid; only
 someone with the Mollie account can look behind it, and that is where the data
-belongs anyway. Nothing is written for payments that were started but never
-paid — Mollie keeps those on its own.
+belongs anyway.
 
 ### What goes to Mollie
 
@@ -155,6 +194,9 @@ paid — Mollie keeps those on its own.
   read back from Mollie. The payment's `metadata.tokenId` must match the token
   it is applied to, and the return page additionally checks that it matches the
   token in its URL.
+- **One payment at a time.** While the token's payment is open, starting a
+  purchase returns that payment's checkout instead of creating another. A late
+  webhook for an older payment only clears the open payment if it is that one.
 - **Once per payment.** Inserting the `token_purchases` row and extending the
   token happen in one transaction; the primary key on `payment_id` turns a
   second webhook (Mollie retries) or a webhook racing the return page into a
@@ -212,7 +254,7 @@ never a sum of the group's media.
 | ------- | --------------------------------- | ------ | ----------------------------------------------- |
 | `GET`   | `/api/access/:token`              | public | now also returns `purchaseOptions` when expired |
 | `GET`   | `/api/access/:token/:mediaId`     | public | the same for a blocked media of a group         |
-| `POST`  | `/api/purchase/:token`            | public | `{ period, locale }` → `{ checkoutUrl }`        |
+| `POST`  | `/api/purchase/:token`            | public | `{ period, locale }` → `{ checkoutUrl }` (¹)    |
 | `POST`  | `/api/purchase/:token/:paymentId` | public | confirms (and applies) a payment → `{ status }` |
 | `POST`  | `/api/payments/webhook`           | public | Mollie status updates                           |
 | `PATCH` | `/api/media/:id`                  | admin  | `{ priceMonth, priceYear }`                     |
@@ -221,6 +263,12 @@ never a sum of the group's media.
 
 `purchaseOptions` is `[{ period: 'month' | 'year', amount: 900, currency: 'EUR' }]`
 with `amount` in minor units; the page formats it with `Intl.NumberFormat`.
+Next to it, `openPayment` is `{ period, status: 'open' | 'pending', resumable }`
+while the token has a payment Mollie still holds open, `null` otherwise.
+
+(¹) The checkout of the token's open payment while there is one; `409
+payment_in_progress` when that payment is being processed and Mollie has no
+checkout left to show.
 
 ---
 
@@ -261,9 +309,11 @@ leaves it empty.
 Weighed before implementing; the decisions above already reflect the outcome.
 
 **Does "no payment data" hold?** Mostly by construction: nothing from the
-payer ever reaches the app, and for abandoned payments nothing is written at
-all. The one stored item, the payment id, is unavoidable — without it, Mollie's
-retried webhooks would extend a token several times. Alternatives considered:
+payer ever reaches the app. The one stored item, the payment id, is
+unavoidable — without it, Mollie's retried webhooks would extend a token
+several times, and a visitor coming back to an open payment would be offered a
+second one. An open payment's id is gone again once Mollie reports it over.
+Alternatives considered:
 
 - _Idempotency via Mollie metadata_ (mark the payment as applied there): a
   read-then-update across the network has no lock, so a retried webhook racing
@@ -299,6 +349,15 @@ exact same check, and the transaction makes the two race-free.
 were a cookie (lost when a banking app returns the visitor in a different
 browser) or waiting for the webhook only (see above). The update is cheap and
 failing it degrades to webhook-only instead of breaking.
+
+**Remembering the open payment on the token.** The alternative was to know
+it only from `?payment=` in the return URL. That is lost on a reload, in a
+different browser and whenever the `redirectUrl` update failed, and the
+visitor would then be offered a second payment next to one they can still
+pay. Two columns on the token hold it — id and checkout URL — since a token
+has at most one payment in progress; it is cleared only for that very payment, so a late webhook of an
+older one cannot drop a newer. Asking Mollie on every load of an expired page
+costs one API call, and only while a payment is open.
 
 **Price changes while a payment is open.** The payment keeps the amount it was
 created with; the admin's new price applies to the next one. Correct, since

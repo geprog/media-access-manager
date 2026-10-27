@@ -97,6 +97,18 @@ export const tokens = sqliteTable('tokens', {
    * actually measured against is `tokenMediaUsage`.
    */
   usageCount: integer('usage_count').notNull().default(0),
+  /**
+   * The Mollie payment the visitor started to buy this token again, until
+   * Mollie reports it paid, expired, canceled or failed. Buying again leads
+   * back to it instead of starting a second payment. See `docs/purchase.md`.
+   */
+  openPaymentId: text('open_payment_id'),
+  /**
+   * Where that payment is paid. Kept because Mollie's API stops handing the
+   * checkout link out once an attempt failed or was canceled, while the page
+   * itself still lets the visitor try again.
+   */
+  openPaymentCheckoutUrl: text('open_payment_checkout_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

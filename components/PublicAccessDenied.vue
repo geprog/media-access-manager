@@ -23,10 +23,11 @@
         <!-- Buying access again is the quickest way back in; asking support
              stays as the way for anyone who would rather not pay online. -->
         <PublicPurchaseOptions
-          v-if="purchaseOptions?.length"
+          v-if="purchaseOptions?.length || openPayment"
           class="mt-6"
           :token="token"
-          :options="purchaseOptions"
+          :options="purchaseOptions ?? []"
+          :open-payment="openPayment"
         />
         <UButton
           v-if="requestAccessLink"
@@ -51,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PurchaseOption } from './PublicPurchaseOptions.vue';
+import type { OpenPayment, PurchaseOption } from './PublicPurchaseOptions.vue';
 import { buildMailtoLink } from '~/utils/mailto';
 
 const props = defineProps<{
@@ -67,6 +68,8 @@ const props = defineProps<{
   groupId?: string | null
   /** What the visitor may buy to get access again, empty when nothing is for sale. */
   purchaseOptions?: PurchaseOption[]
+  /** A payment the visitor started and has not finished, continued instead of buying again. */
+  openPayment?: OpenPayment | null
 }>();
 
 const { t } = useI18n();

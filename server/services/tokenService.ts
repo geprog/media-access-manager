@@ -638,12 +638,42 @@ export function applyTokenPurchase(data: {
       expiresAfter,
       createdAt: now,
     }).run();
+    // The paid payment is no longer one to lead the visitor back to.
+    const paidOpenPayment = tokenRow.openPaymentId === data.paymentId;
     tx.update(tokens)
-      .set({ expiresAt: expiresAfter, usageLimit: null })
+      .set({
+        expiresAt: expiresAfter,
+        usageLimit: null,
+        ...(paidOpenPayment ? { openPaymentId: null, openPaymentCheckoutUrl: null } : {}),
+      })
       .where(eq(tokens.id, tokenRow.id))
       .run();
     return 'applied';
   });
+}
+
+/**
+ * Remembers the payment a visitor just started for this token, so buying again
+ * while it is open leads back to it instead of starting a second one.
+ */
+export function setOpenPayment(tokenId: string, paymentId: string, checkoutUrl: string) {
+  useDb()
+    .update(tokens)
+    .set({ openPaymentId: paymentId, openPaymentCheckoutUrl: checkoutUrl })
+    .where(eq(tokens.id, tokenId))
+    .run();
+}
+
+/**
+ * Forgets the token's open payment once Mollie reports it over. Only that very
+ * payment: a late webhook for an older one must not drop a newer payment.
+ */
+export function clearOpenPayment(tokenId: string, paymentId: string) {
+  useDb()
+    .update(tokens)
+    .set({ openPaymentId: null, openPaymentCheckoutUrl: null })
+    .where(and(eq(tokens.id, tokenId), eq(tokens.openPaymentId, paymentId)))
+    .run();
 }
 
 export async function findTokenById(tokenId: string) {

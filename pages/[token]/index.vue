@@ -21,6 +21,7 @@
         :media-id="denial?.mediaId"
         :group-id="denial?.groupId"
         :purchase-options="denial?.purchaseOptions"
+        :open-payment="denial?.openPayment"
       />
       <!-- A group token unlocks several media, so the visitor picks one instead
            of being dropped straight into a player. Nothing is spent here. -->
@@ -32,6 +33,7 @@
         :valid-for="access.access.validFor"
         :media="access.media"
         :purchase-options="access.purchaseOptions"
+        :open-payment="access.openPayment"
       />
       <!-- Watching would spend a limited view or start the access window, so the
            visitor is asked first instead of losing it to an accidental tap. -->
@@ -59,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
+import type { OpenPayment, PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
 
 definePageMeta({
   public: true,
@@ -111,6 +113,7 @@ const denial = computed(() => {
       mediaId?: string | null
       groupId?: string | null
       purchaseOptions?: PurchaseOption[]
+      openPayment?: OpenPayment | null
     }
   } | undefined;
   return body?.data;

@@ -18,6 +18,8 @@ vi.mock('../utils/db', () => ({
 }));
 
 const {
+  applyTokenPurchase,
+  clearOpenPayment,
   consumeGroupMediaView,
   createBatch,
   createToken,
@@ -29,6 +31,7 @@ const {
   listRecentViews,
   listTokensByBatchId,
   listViewsBetween,
+  setOpenPayment,
   validateAndConsumeToken,
 } = await import('./tokenService');
 const { createMedia, deleteMedia } = await import('./mediaService');
@@ -51,7 +54,7 @@ async function someMedia(title = `Video ${++counter}`) {
 }
 
 beforeEach(() => {
-  for (const table of ['token_views', 'token_media_usage', 'tokens', 'batches', 'media_group_items', 'media_groups', 'media']) {
+  for (const table of ['token_purchases', 'token_views', 'token_media_usage', 'tokens', 'batches', 'media_group_items', 'media_groups', 'media']) {
     sqlite.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -265,5 +268,51 @@ describe('listing views for the statistics', () => {
     const [latest] = await listRecentViews(new Date(0), new Date(Date.now() + 60 * 1000), null, 10);
 
     expect(latest).toMatchObject({ mediaTitle: 'Keynote', tokenName: 'one', token, batchName: null, groupName: null });
+  });
+});
+
+describe('payments of a token', () => {
+  it('remembers the payment a visitor started, so buying again leads back to it', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+
+    setOpenPayment(id, 'tr_started', 'https://checkout.example/started');
+
+    const row = await findTokenByValue(token);
+    expect(row?.openPaymentId).toBe('tr_started');
+    expect(row?.openPaymentCheckoutUrl).toBe('https://checkout.example/started');
+  });
+
+  it('forgets an open payment only once that very payment has ended', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    setOpenPayment(id, 'tr_newer', 'https://checkout.example/newer');
+
+    // A late webhook for an older payment must not drop the newer one.
+    clearOpenPayment(id, 'tr_older');
+    expect((await findTokenByValue(token))?.openPaymentId).toBe('tr_newer');
+
+    clearOpenPayment(id, 'tr_newer');
+    const row = await findTokenByValue(token);
+    expect(row?.openPaymentId).toBeNull();
+    expect(row?.openPaymentCheckoutUrl).toBeNull();
+  });
+
+  it('extends the token once per paid payment and forgets it as open', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'expired',
+      usageLimit: 3,
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    setOpenPayment(id, 'tr_paid', 'https://checkout.example/paid');
+    const now = new Date('2026-03-15T12:00:00Z');
+
+    expect(applyTokenPurchase({ tokenId: id, paymentId: 'tr_paid', period: 'month', now })).toBe('applied');
+    expect(applyTokenPurchase({ tokenId: id, paymentId: 'tr_paid', period: 'month', now })).toBe('already_applied');
+
+    const renewed = await findTokenByValue(token);
+    expect(renewed?.expiresAt).toEqual(new Date('2026-04-15T12:00:00Z'));
+    expect(renewed?.usageLimit).toBeNull();
+    expect(renewed?.openPaymentId).toBeNull();
+    expect(renewed?.openPaymentCheckoutUrl).toBeNull();
   });
 });

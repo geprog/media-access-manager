@@ -9,6 +9,7 @@
       :media-id="denial?.mediaId"
       :group-id="denial?.groupId"
       :purchase-options="denial?.purchaseOptions"
+      :open-payment="denial?.openPayment"
     >
       <template #actions>
         <UButton variant="link" :to="groupLink" :label="$t('public_group_back')" />
@@ -57,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
+import type { OpenPayment, PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
 
 definePageMeta({
   public: true,
@@ -90,6 +91,7 @@ const denial = computed(() => {
       mediaId?: string | null
       groupId?: string | null
       purchaseOptions?: PurchaseOption[]
+      openPayment?: OpenPayment | null
     }
   } | undefined;
   return body?.data;

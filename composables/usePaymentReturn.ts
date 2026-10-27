@@ -9,12 +9,17 @@ import type { MaybeRefOrGetter } from 'vue';
  *   offers the purchase again.
  * - `timeout`: still not confirmed after a while; the page loads anyway, in
  *   case the webhook got through in the meantime.
+ *
+ * A payment still `open` — the visitor left Mollie's checkout without paying —
+ * is neither: Mollie keeps it open until it expires, so the page loads and
+ * offers to continue it.
  */
 export type PaymentReturnState = 'idle' | 'checking' | 'pending' | 'failed' | 'timeout';
 
 /** Bank transfers and some wallets take a moment; two minutes covers the usual cases. */
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 40;
+type PaymentStatus = 'paid' | 'pending' | 'open' | 'failed';
 
 /**
  * Confirms the payment named in `?payment=` before the token page loads, then
@@ -44,9 +49,9 @@ export function usePaymentReturn(token: MaybeRefOrGetter<string>, onSettled: () 
     if (stopped) {
       return;
     }
-    let status: 'paid' | 'pending' | 'failed' | null;
+    let status: PaymentStatus | null;
     try {
-      ({ status } = await $fetch<{ status: 'paid' | 'pending' | 'failed' }>(
+      ({ status } = await $fetch<{ status: PaymentStatus }>(
         `/api/purchase/${encodeURIComponent(toValue(token))}/${encodeURIComponent(paymentId!)}`,
         { method: 'POST' },
       ));

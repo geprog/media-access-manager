@@ -65,16 +65,17 @@
     <!-- Buying again lifts the view limit for the whole group, so it belongs
          to the list rather than to one used-up card. -->
     <PublicPurchaseOptions
-      v-if="hasBlockedMedia && purchaseOptions?.length"
+      v-if="hasBlockedMedia && (purchaseOptions?.length || openPayment)"
       class="mt-6"
       :token="token"
-      :options="purchaseOptions"
+      :options="purchaseOptions ?? []"
+      :open-payment="openPayment"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import type { PurchaseOption } from './PublicPurchaseOptions.vue';
+import type { OpenPayment, PurchaseOption } from './PublicPurchaseOptions.vue';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { getRemainingViews } from '~/utils/accessWindow';
 import { buildMailtoLink } from '~/utils/mailto';
@@ -98,6 +99,8 @@ const props = defineProps<{
   media: GroupMediaEntry[]
   /** Offered once some media are used up; empty when nothing is for sale. */
   purchaseOptions?: PurchaseOption[]
+  /** A payment the visitor started and has not finished, continued instead of buying again. */
+  openPayment?: OpenPayment | null
 }>();
 
 const { t } = useI18n();

@@ -118,12 +118,20 @@ describe('toMollieLocale', () => {
 
 describe('classifyPaymentStatus', () => {
   it('groups Mollie\'s statuses into what the visitor needs to know', () => {
-    expect(classifyPaymentStatus('paid')).toBe('paid');
-    expect(classifyPaymentStatus('open')).toBe('pending');
-    expect(classifyPaymentStatus('pending')).toBe('pending');
-    expect(classifyPaymentStatus('authorized')).toBe('pending');
-    expect(classifyPaymentStatus('canceled')).toBe('failed');
-    expect(classifyPaymentStatus('expired')).toBe('failed');
-    expect(classifyPaymentStatus('failed')).toBe('failed');
+    expect(classifyPaymentStatus('paid', 'paypal')).toBe('paid');
+    expect(classifyPaymentStatus('pending', 'creditcard')).toBe('pending');
+    expect(classifyPaymentStatus('authorized', 'creditcard')).toBe('pending');
+    expect(classifyPaymentStatus('canceled', 'paypal')).toBe('failed');
+    expect(classifyPaymentStatus('expired', null)).toBe('failed');
+    expect(classifyPaymentStatus('failed', 'creditcard')).toBe('failed');
+  });
+
+  it('tells a checkout left without paying apart from money still on its way', () => {
+    // Leaving Mollie's checkout via "back" keeps the payment open, with or
+    // without a method picked.
+    expect(classifyPaymentStatus('open', null)).toBe('open');
+    expect(classifyPaymentStatus('open', 'paypal')).toBe('open');
+    // A bank transfer stays open until the money arrives, days later.
+    expect(classifyPaymentStatus('open', 'banktransfer')).toBe('pending');
   });
 });

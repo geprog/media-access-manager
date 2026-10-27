@@ -129,13 +129,22 @@ export function toMollieLocale(locale: string): string | undefined {
 
 /**
  * Mollie's statuses as far as a visitor is concerned: the money arrived, it may
- * still arrive, or this payment is over without it.
+ * still arrive, the checkout was left without paying (`open`), or this payment
+ * is over without it.
  */
-export type PurchaseStatus = 'paid' | 'pending' | 'failed';
+export type PurchaseStatus = 'paid' | 'pending' | 'open' | 'failed';
 
-export function classifyPaymentStatus(status: string): PurchaseStatus {
+/**
+ * `open` is what a visitor coming back from Mollie's "back" link brings: the
+ * payment lives on at Mollie for a while, but nothing is on its way — except
+ * for a bank transfer, which stays open until the money arrives.
+ */
+export function classifyPaymentStatus(status: string, method: string | null): PurchaseStatus {
   if (status === 'paid') {
     return 'paid';
   }
-  return ['open', 'pending', 'authorized'].includes(status) ? 'pending' : 'failed';
+  if (status === 'open') {
+    return method === 'banktransfer' ? 'pending' : 'open';
+  }
+  return ['pending', 'authorized'].includes(status) ? 'pending' : 'failed';
 }

@@ -154,6 +154,64 @@ test.describe('Buying access again', () => {
     expect(unchanged?.usageLimit).toBe(3);
   });
 
+  test('a visitor who leaves the checkout continues the same payment', async ({ page }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const checkoutUrl = page.url();
+    // Mollie's link back to the shop leaves the payment open until it expires,
+    // so it is neither "being processed" nor over.
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await expect(page.getByText(/started a payment that is not finished/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/being processed|not completed/i)).toHaveCount(0);
+    // No second payment: buying is replaced by continuing the one begun.
+    await expect(page.getByRole('button', { name: /for €/ })).toHaveCount(0);
+    await expect(page).toHaveURL(`/${token}`);
+
+    // Reloading must not forget it either: the token remembers its payment.
+    await page.reload();
+    await page.getByRole('button', { name: 'Continue payment' }).click();
+    await expect(page).toHaveURL(checkoutUrl);
+
+    await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        title,
+        embed: videoEmbed('E2E Purchased Video'),
+        access: { expiresAt: null, usageLimit: null, usageCount: 1 },
+      }),
+    }));
+    await page.getByRole('button', { name: 'Pay' }).click();
+    await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
+
+    const renewed = await readToken(page, mediaId, token);
+    expect(renewed?.usageLimit).toBeNull();
+  });
+
+  test('offers buying again once Mollie lets an open payment expire', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1];
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByRole('button', { name: 'Continue payment' })).toBeVisible({ timeout: 10000 });
+
+    // No webhook reaches a local server, so the page asks Mollie itself.
+    const expired = await request.post(new URL(`../__payments/${paymentId}/expire`, process.env.NUXT_MOLLIE_API_ENDPOINT).href);
+    expect(expired.ok()).toBe(true);
+    await page.goto(`/${token}`);
+
+    await expect(page.getByRole('button', { name: '1 year for €49.00' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Continue payment' })).toHaveCount(0);
+  });
+
   test('offers nothing to buy for media without prices', async ({ page }, testInfo) => {
     await login(page);
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;

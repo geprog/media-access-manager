@@ -4,7 +4,8 @@
  * the browser visits its `/checkout/:id` page instead of Mollie's hosted one.
  *
  * Covers only what the app uses: create, update and get a payment. `GET
- * /__payments` lets a test see what the app sent, e.g. the description.
+ * /__payments` lets a test see what the app sent, e.g. the description, and
+ * `POST /__payments/:id/expire` lets a payment expire as Mollie's would.
  *
  * Run directly with Node, which strips the types: `node e2e/support/mollieStub.ts`.
  */
@@ -21,6 +22,7 @@ interface StubPayment {
   id: string
   mode: 'test'
   status: string
+  method: string | null
   amount: { currency: string, value: string }
   description: string
   redirectUrl: string
@@ -57,15 +59,37 @@ createServer(async (request, response) => {
   if (url.pathname === '/__payments') {
     return send(response, 200, [...payments.values()]);
   }
+  // What Mollie does by itself once a payment was left open for too long.
+  if (first === '__payments' && second && id === 'expire' && request.method === 'POST') {
+    const payment = payments.get(second);
+    if (!payment) {
+      return notFound(response);
+    }
+    payment.status = 'expired';
+    delete payment._links.checkout;
+    return send(response, 200, payment);
+  }
 
-  // Mollie's hosted checkout, reduced to the two outcomes a test needs.
+  // Mollie's hosted checkout, reduced to the outcomes a test needs. "Back" is
+  // Mollie's link back to the shop, which leaves the payment open.
   if (first === 'checkout' && second) {
     const payment = payments.get(second);
     if (!payment) {
       return notFound(response);
     }
     if (request.method === 'POST' && id) {
-      payment.status = id === 'pay' ? 'paid' : 'canceled';
+      if (id === 'pay') {
+        Object.assign(payment, { status: 'paid', method: 'creditcard' });
+      }
+      else if (id === 'cancel') {
+        payment.status = 'canceled';
+      }
+      else {
+        // Like Mollie after a failed attempt: still open, but the API no longer
+        // hands out the checkout link — the page itself keeps working.
+        payment.method = 'paypal';
+        delete payment._links.checkout;
+      }
       response.writeHead(303, { location: payment.redirectUrl });
       return response.end();
     }
@@ -73,7 +97,8 @@ createServer(async (request, response) => {
     return response.end(`<!doctype html><h1>${payment.description}</h1>
       <p>${payment.amount.value} ${payment.amount.currency}</p>
       <form method="post" action="/checkout/${payment.id}/pay"><button>Pay</button></form>
-      <form method="post" action="/checkout/${payment.id}/cancel"><button>Cancel</button></form>`);
+      <form method="post" action="/checkout/${payment.id}/cancel"><button>Cancel</button></form>
+      <form method="post" action="/checkout/${payment.id}/back"><button>Back</button></form>`);
   }
 
   if (first !== 'v2' || second !== 'payments' || action) {
@@ -87,6 +112,7 @@ createServer(async (request, response) => {
       id: paymentId,
       mode: 'test',
       status: 'open',
+      method: null,
       amount: body.amount,
       description: body.description,
       redirectUrl: body.redirectUrl,

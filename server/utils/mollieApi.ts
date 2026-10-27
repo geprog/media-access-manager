@@ -13,6 +13,8 @@ export interface MolliePayment {
   id: string
   /** `open`, `pending`, `authorized`, `paid`, `canceled`, `expired` or `failed`. */
   status: string
+  /** `null` until the customer picked one on the checkout. */
+  method: string | null
   metadata: unknown
   _links: {
     checkout?: { href: string }
