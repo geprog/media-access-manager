@@ -70,8 +70,11 @@ async function getPurchaseTarget(tokenRow: Token): Promise<PurchaseTarget | null
 /** A payment the visitor started for the token, as far as their page needs to know. */
 export interface OpenPayment {
   period: PurchasePeriod
-  /** `open`: not paid yet, to be continued at Mollie. `pending`: the money is on its way. */
-  status: 'open' | 'pending'
+  /**
+   * `open`: not paid yet, to be continued at Mollie. `pending`: being processed,
+   * done in a moment. `transfer`: a bank transfer, done once the money arrives.
+   */
+  status: 'open' | 'pending' | 'transfer'
   /** Whether Mollie's checkout still has something to show, e.g. a bank transfer's details. */
   resumable: boolean
 }
@@ -83,9 +86,6 @@ export interface PurchaseOffer {
 }
 
 const NO_OFFER: PurchaseOffer = { options: [], openPayment: null };
-
-/** Mollie sends the visitor back to `/{token}?checkout=returned`. */
-const CHECKOUT_RETURN_QUERY = 'checkout=returned';
 
 /** `null` for an id Mollie does not know. */
 async function fetchPayment(mollie: MollieApi, paymentId: string): Promise<MolliePayment | null> {
@@ -158,7 +158,7 @@ async function refreshOpenPayment(mollie: MollieApi, tokenRow: Token): Promise<O
 }
 
 function isOngoing(state: OpenPaymentState | null): state is OpenPaymentState & { status: OpenPayment['status'] } {
-  return state?.status === 'open' || state?.status === 'pending';
+  return state?.status === 'open' || state?.status === 'pending' || state?.status === 'transfer';
 }
 
 /**
@@ -252,9 +252,9 @@ export async function startPurchase(data: {
   const payment = await mollie.createPayment({
     amount: toMollieAmount(option.amount, option.currency),
     description: buildPaymentDescription(target.title, data.period, data.locale),
-    // Mollie's redirect says nothing about the payment; the marker only tells
-    // the page to ask about the token's open payment before it shows anything.
-    redirectUrl: `${tokenPath}?${CHECKOUT_RETURN_QUERY}`,
+    // Mollie's redirect says nothing about the payment, and needs not: the
+    // token page asks about the token's open payment whenever it loads.
+    redirectUrl: tokenPath,
     webhookUrl: isLocalOrigin(data.origin) ? undefined : `${data.origin}/api/payments/webhook`,
     locale: toMollieLocale(data.locale),
     metadata,
@@ -268,18 +268,22 @@ export async function startPurchase(data: {
 }
 
 /**
- * What a visitor coming back from Mollie learns: how the token's open payment
- * stands, settled the same way the webhook would, so a paid one opens the
- * content without waiting for Mollie's call — and works where Mollie cannot
- * call at all, like a local setup.
+ * How the token's open payment stands, settled the same way the webhook would,
+ * so a visitor back from Mollie with a paid one sees the content without
+ * waiting for Mollie's call — and so it works where Mollie cannot call at all,
+ * like a local setup. Asked whenever the token page loads.
  *
  * `null` when the token has no payment in progress (any longer), e.g. because
- * the webhook already applied it.
+ * the webhook already applied it, or when purchasing is off. No call to Mollie
+ * is made then.
  */
 export async function confirmTokenPayment(tokenValue: string): Promise<PurchaseStatus | null> {
   const mollie = useMollie();
+  if (!mollie) {
+    return null;
+  }
   const tokenRow = await findTokenByValue(tokenValue);
-  if (!mollie || !tokenRow) {
+  if (!tokenRow) {
     throw new PurchaseUnavailableError();
   }
   return (await refreshOpenPayment(mollie, tokenRow))?.status ?? null;

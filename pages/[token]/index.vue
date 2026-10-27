@@ -1,7 +1,7 @@
 <template>
   <div class="flex min-h-screen flex-col items-center p-4" :class="centered ? 'justify-center' : 'py-8'">
-    <!-- Returning from Mollie: nothing is shown until the payment is known,
-         or someone who just paid would be told their access has ended. -->
+    <!-- A payment being processed: nothing is shown until it is through, or
+         someone who just paid would be told their access has ended. -->
     <PublicAccessLoading v-if="paymentMessage" :message="paymentMessage" />
     <template v-else>
       <UAlert
@@ -78,19 +78,16 @@ const { data: access, error, status, execute } = useFetch(
   accessUrl,
   // Views a group token spent come back with this list, so returning here
   // after watching must not show the counts from before.
-  // Held back until a payment the visitor returns with is confirmed: loading can
-  // spend a view, and before then it would only report the old expiry.
+  // Held back until the token's payment, if any, is settled: loading can spend
+  // a view, and before then it would only report the old expiry.
   { getCachedData: () => undefined, immediate: false },
 );
 
-const { state: paymentState } = usePaymentReturn(token, execute);
+const { state: paymentState } = usePaymentCheck(token, execute);
 
-const paymentMessage = computed(() => {
-  if (paymentState.value === 'checking') {
-    return t('public_payment_checking');
-  }
-  return paymentState.value === 'pending' ? t('public_payment_pending') : null;
-});
+// Only a payment being processed is worth a word; the check itself happens on
+// every load and hides behind the usual loader.
+const paymentMessage = computed(() => paymentState.value === 'pending' ? t('public_payment_pending') : null);
 
 const paymentNotice = computed(() => {
   if (paymentState.value === 'failed') {

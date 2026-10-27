@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, test } from '@nuxt/test-utils/playwright';
 import {
   addMediaViaUI,
@@ -49,6 +49,11 @@ async function createExpiredToken(page: Page, mediaId: string): Promise<string> 
     const created: { token: string } = await response.json();
     return created.token;
   }, mediaId);
+}
+
+/** Changes a payment at the Mollie stand-in the way Mollie would on its own. */
+function setStubPaymentStatus(request: APIRequestContext, paymentId: string | undefined, status: string) {
+  return request.post(new URL(`../__payments/${paymentId}/${status}`, process.env.NUXT_MOLLIE_API_ENDPOINT).href);
 }
 
 interface TokenRow { token: string, expiresAt: string | null, usageLimit: number | null }
@@ -129,11 +134,11 @@ test.describe('Buying access again', () => {
     await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
     // The return marker is dropped from the address once the payment is confirmed.
     await expect(page).toHaveURL(`/${token}`);
-    // Mollie is told the token page once, at creation; nothing is updated later.
+    // Mollie is told nothing but the token page to come back to.
     const sent: Array<{ redirectUrl: string }> = await (await request.get(
       new URL('../__payments', process.env.NUXT_MOLLIE_API_ENDPOINT).href,
     )).json();
-    expect(sent.at(-1)?.redirectUrl).toMatch(new RegExp(`/${token}\\?checkout=returned$`));
+    expect(sent.at(-1)?.redirectUrl).toMatch(new RegExp(`/${token}$`));
 
     // The token itself was renewed: a year from now, and no view limit.
     const renewed = await readToken(page, mediaId, token);
@@ -209,12 +214,41 @@ test.describe('Buying access again', () => {
     await expect(page.getByRole('button', { name: 'Continue payment' })).toBeVisible({ timeout: 10000 });
 
     // No webhook reaches a local server, so the page asks Mollie itself.
-    const expired = await request.post(new URL(`../__payments/${paymentId}/expire`, process.env.NUXT_MOLLIE_API_ENDPOINT).href);
+    const expired = await setStubPaymentStatus(request, paymentId, 'expired');
     expect(expired.ok()).toBe(true);
     await page.goto(`/${token}`);
 
     await expect(page.getByRole('button', { name: '1 year for €49.00' })).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole('button', { name: 'Continue payment' })).toHaveCount(0);
+  });
+
+  test('opening a token whose payment is being processed waits for it', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1];
+    // Processing goes on at Mollie while the visitor opens their link again,
+    // without coming back from the checkout.
+    expect((await setStubPaymentStatus(request, paymentId, 'pending')).ok()).toBe(true);
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/payment is being processed/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/access to this video has ended/i)).toHaveCount(0);
+
+    await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        title,
+        embed: videoEmbed('E2E Purchased Video'),
+        access: { expiresAt: null, usageLimit: null, usageCount: 1 },
+      }),
+    }));
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
   });
 
   test('offers nothing to buy for media without prices', async ({ page }, testInfo) => {

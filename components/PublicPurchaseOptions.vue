@@ -8,7 +8,7 @@
          the one they began is continued instead, where they can try again. -->
     <template v-if="openPayment">
       <p class="text-sm text-muted">
-        {{ openPayment.status === 'open' ? $t('public_purchase_open') : $t('public_purchase_processing') }}
+        {{ openPaymentText }}
       </p>
       <UButton
         v-if="openPayment.resumable"
@@ -61,8 +61,11 @@ export interface PurchaseOption {
 /** A payment the visitor started and has not finished, as the access endpoint sends it. */
 export interface OpenPayment {
   period: PurchaseOption['period']
-  /** `open`: to be continued at Mollie. `pending`: the money is on its way. */
-  status: 'open' | 'pending'
+  /**
+   * `open`: to be continued at Mollie. `pending`: being processed, done in a
+   * moment. `transfer`: a bank transfer, done once the money arrives.
+   */
+  status: 'open' | 'pending' | 'transfer'
   /** Whether Mollie's checkout still has something to show for it. */
   resumable: boolean
 }
@@ -76,6 +79,17 @@ const props = defineProps<{
 const { t, locale } = useI18n();
 
 const pendingPeriod = ref<PurchaseOption['period'] | null>(null);
+
+const openPaymentText = computed(() => {
+  switch (props.openPayment?.status) {
+    case 'open':
+      return t('public_purchase_open');
+    case 'transfer':
+      return t('public_purchase_transfer');
+    default:
+      return t('public_purchase_processing');
+  }
+});
 const failed = ref(false);
 
 function optionLabel(option: PurchaseOption) {

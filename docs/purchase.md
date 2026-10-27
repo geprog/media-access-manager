@@ -32,7 +32,7 @@ sequenceDiagram
     M-)A: POST /api/payments/webhook  id=tr_…
     A->>M: GET payment tr_… (status, metadata)
     A->>A: paid → extend token (once per payment)
-    M->>P: redirect back to /{token}?checkout=returned
+    M->>P: redirect back to /{token}
     P->>A: POST /api/purchase/{token}/confirm
     A->>M: GET the token's open payment (same check as the webhook)
     A-->>P: { status: paid }
@@ -56,19 +56,26 @@ sequenceDiagram
 - **Admins** opening an expired link keep seeing the way to their media or
   group, not a checkout.
 
-### Returning from Mollie
+### Opening the token page, also when returning from Mollie
 
 Mollie's redirect carries no payment id, and needs none: the token remembers
-the payment it started (see below). The `redirectUrl`, set once when the
-payment is created, is `/{token}?checkout=returned`; the marker only tells the
-page to ask about the token's open payment before it loads anything else:
+the payment it started (see below), and the `redirectUrl` is just `/{token}`.
+Whenever the token page loads — back from the checkout or opened later — it
+first asks `POST /api/purchase/{token}/confirm` about the token's open payment
+and only then loads the content. Without an open payment that is a database
+lookup, no call to Mollie, behind the page's usual loader:
 
 | Payment status                  | Page shows                                                     |
 | ------------------------------- | -------------------------------------------------------------- |
 | `paid`                          | the content right away                                         |
 | `pending`, `authorized`         | "payment is being processed", checking again every few seconds |
 | `open` (left without paying)    | "you started a payment" with **Continue payment**              |
+| `open` by bank transfer         | "waiting for your bank transfer" with **Show payment details** |
 | `canceled`, `expired`, `failed` | "payment was not completed" above the purchase options again   |
+
+Only `pending` and `authorized` hold the page back: Mollie finishes those
+within moments. A bank transfer stays `open` for days, and waiting for it on
+every visit would only keep the visitor from the page.
 
 ### A payment left open
 
@@ -87,8 +94,9 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
 - the purchase buttons give way to **Continue payment**, which leads to that
   payment's checkout (the one stored at creation, see §3), where the visitor pays, tries another method or leaves
   it to expire. Starting a second payment instead could have them pay twice.
-- a bank transfer, `open` until the money arrives, shows "being processed"
-  and **Show payment details**, which is Mollie's page with the transfer data.
+- a bank transfer, `open` until the money arrives, shows "waiting for your
+  bank transfer" and **Show payment details**, which is Mollie's page with the
+  transfer data.
 - nothing sends the visitor to Mollie unasked: their "back" link would only
   bring them straight back again.
 
@@ -288,7 +296,7 @@ utils/money.ts                   # minor units ⇄ Mollie amount string / input
 components/
 ├── PublicPurchaseOptions.vue    # buttons on the expired page and group list
 └── PurchasePricesCard.vue       # admin price editor, media + group page
-composables/usePaymentReturn.ts  # ?checkout=returned handling on the token page
+composables/usePaymentCheck.ts   # settles the token's payment before the page loads
 e2e/support/mollieStub.ts        # local Mollie stand-in for the E2E suite
 ```
 

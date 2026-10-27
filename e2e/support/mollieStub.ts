@@ -5,7 +5,8 @@
  *
  * Covers only what the app uses: create and get a payment. `GET
  * /__payments` lets a test see what the app sent, e.g. the description, and
- * `POST /__payments/:id/expire` lets a payment expire as Mollie's would.
+ * `POST /__payments/:id/:status` changes a payment the way Mollie would on its
+ * own, e.g. `expired`.
  *
  * Run directly with Node, which strips the types: `node e2e/support/mollieStub.ts`.
  */
@@ -59,14 +60,17 @@ createServer(async (request, response) => {
   if (url.pathname === '/__payments') {
     return send(response, 200, [...payments.values()]);
   }
-  // What Mollie does by itself once a payment was left open for too long.
-  if (first === '__payments' && second && id === 'expire' && request.method === 'POST') {
+  // What Mollie does without the customer on its checkout: process a payment
+  // (`pending`), complete it (`paid`), or let it expire (`expired`).
+  if (first === '__payments' && second && id && request.method === 'POST') {
     const payment = payments.get(second);
     if (!payment) {
       return notFound(response);
     }
-    payment.status = 'expired';
-    delete payment._links.checkout;
+    payment.status = id;
+    if (id !== 'open') {
+      delete payment._links.checkout;
+    }
     return send(response, 200, payment);
   }
 

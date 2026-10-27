@@ -131,7 +131,8 @@ describe('classifyPaymentStatus', () => {
     // without a method picked.
     expect(classifyPaymentStatus('open', null)).toBe('open');
     expect(classifyPaymentStatus('open', 'paypal')).toBe('open');
-    // A bank transfer stays open until the money arrives, days later.
-    expect(classifyPaymentStatus('open', 'banktransfer')).toBe('pending');
+    // A bank transfer stays open until the money arrives, days later — not
+    // something to wait for on the page, unlike a payment being processed.
+    expect(classifyPaymentStatus('open', 'banktransfer')).toBe('transfer');
   });
 });
