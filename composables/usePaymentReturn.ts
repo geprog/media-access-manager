@@ -22,14 +22,15 @@ const MAX_POLLS = 40;
 type PaymentStatus = 'paid' | 'pending' | 'open' | 'failed';
 
 /**
- * Confirms the payment named in `?payment=` before the token page loads, then
- * calls `onSettled`. Without that parameter `onSettled` runs straight away.
+ * Confirms the token's payment before the page loads when Mollie sent the
+ * visitor back (`?checkout=returned`), then calls `onSettled`. Without that
+ * marker `onSettled` runs straight away.
  */
 export function usePaymentReturn(token: MaybeRefOrGetter<string>, onSettled: () => unknown) {
   const route = useRoute();
   const router = useRouter();
-  const paymentId = typeof route.query.payment === 'string' ? route.query.payment : null;
-  const state = ref<PaymentReturnState>(paymentId ? 'checking' : 'idle');
+  const returned = route.query.checkout === 'returned';
+  const state = ref<PaymentReturnState>(returned ? 'checking' : 'idle');
   let stopped = false;
 
   onBeforeUnmount(() => {
@@ -38,9 +39,9 @@ export function usePaymentReturn(token: MaybeRefOrGetter<string>, onSettled: () 
 
   async function settle(next: PaymentReturnState) {
     state.value = next;
-    // A reload must not confirm the same payment again, and the address is
-    // what a visitor bookmarks or shares.
-    const { payment: _payment, ...query } = route.query;
+    // A reload must not hold the page back again, and the address is what a
+    // visitor bookmarks or shares.
+    const { checkout: _checkout, ...query } = route.query;
     await router.replace({ query });
     await onSettled();
   }
@@ -51,14 +52,16 @@ export function usePaymentReturn(token: MaybeRefOrGetter<string>, onSettled: () 
     }
     let status: PaymentStatus | null;
     try {
-      ({ status } = await $fetch<{ status: PaymentStatus }>(
-        `/api/purchase/${encodeURIComponent(toValue(token))}/${encodeURIComponent(paymentId!)}`,
+      // `null` when no payment is in progress any more, e.g. the webhook was
+      // faster and already applied it.
+      ({ status } = await $fetch<{ status: PaymentStatus | null }>(
+        `/api/purchase/${encodeURIComponent(toValue(token))}/confirm`,
         { method: 'POST' },
       ));
     }
     catch {
-      // An unknown or foreign payment id, or Mollie unreachable: the token page
-      // itself shows whatever state the token is in.
+      // An unknown token, or Mollie unreachable: the token page itself shows
+      // whatever state the token is in.
       status = null;
     }
     if (status === 'pending') {
@@ -72,7 +75,7 @@ export function usePaymentReturn(token: MaybeRefOrGetter<string>, onSettled: () 
     return settle(status === 'failed' ? 'failed' : 'idle');
   }
 
-  if (paymentId) {
+  if (returned) {
     poll(0);
   }
   else {

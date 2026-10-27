@@ -84,6 +84,9 @@ export interface PurchaseOffer {
 
 const NO_OFFER: PurchaseOffer = { options: [], openPayment: null };
 
+/** Mollie sends the visitor back to `/{token}?checkout=returned`. */
+const CHECKOUT_RETURN_QUERY = 'checkout=returned';
+
 /** `null` for an id Mollie does not know. */
 async function fetchPayment(mollie: MollieApi, paymentId: string): Promise<MolliePayment | null> {
   try {
@@ -249,20 +252,13 @@ export async function startPurchase(data: {
   const payment = await mollie.createPayment({
     amount: toMollieAmount(option.amount, option.currency),
     description: buildPaymentDescription(target.title, data.period, data.locale),
-    redirectUrl: tokenPath,
+    // Mollie's redirect says nothing about the payment; the marker only tells
+    // the page to ask about the token's open payment before it shows anything.
+    redirectUrl: `${tokenPath}?${CHECKOUT_RETURN_QUERY}`,
     webhookUrl: isLocalOrigin(data.origin) ? undefined : `${data.origin}/api/payments/webhook`,
     locale: toMollieLocale(data.locale),
     metadata,
   });
-  // Mollie's redirect carries no payment id, so it is written into the URL
-  // once the id exists. Should that fail, the visitor still returns to their
-  // token, which knows its open payment (stored below) and asks Mollie about it.
-  try {
-    await mollie.updatePayment(payment.id, { redirectUrl: `${tokenPath}?payment=${payment.id}` });
-  }
-  catch (error) {
-    console.error(`Failed to add the payment id to the redirect of ${payment.id}:`, error);
-  }
   const checkoutUrl = payment._links.checkout?.href;
   if (!checkoutUrl) {
     throw new Error(`Mollie returned no checkout URL for payment ${payment.id}`);
@@ -272,24 +268,39 @@ export async function startPurchase(data: {
 }
 
 /**
+ * What a visitor coming back from Mollie learns: how the token's open payment
+ * stands, settled the same way the webhook would, so a paid one opens the
+ * content without waiting for Mollie's call — and works where Mollie cannot
+ * call at all, like a local setup.
+ *
+ * `null` when the token has no payment in progress (any longer), e.g. because
+ * the webhook already applied it.
+ */
+export async function confirmTokenPayment(tokenValue: string): Promise<PurchaseStatus | null> {
+  const mollie = useMollie();
+  const tokenRow = await findTokenByValue(tokenValue);
+  if (!mollie || !tokenRow) {
+    throw new PurchaseUnavailableError();
+  }
+  return (await refreshOpenPayment(mollie, tokenRow))?.status ?? null;
+}
+
+/**
  * Looks a payment up at Mollie and settles it: once paid it extends the token
  * it was made for, once over without money the token forgets it. Everything
- * that matters — token, period, status — is read back from Mollie, so neither
- * the webhook's body nor the visitor's URL can claim a payment that did not
- * happen. Safe to call any number of times.
- *
- * `null` means the payment is unknown or none of this app's business, e.g. it
- * belongs to another token than `expectedToken`.
+ * that matters — token, period, status — is read back from Mollie, so the
+ * webhook's body cannot claim a payment that did not happen. Safe to call any
+ * number of times; an id Mollie does not know, or one this app did not create,
+ * changes nothing.
  */
-export async function confirmPayment(paymentId: string, expectedToken?: string): Promise<PurchaseStatus | null> {
+export async function confirmPayment(paymentId: string): Promise<void> {
   const mollie = useMollie();
   if (!mollie) {
-    return null;
+    return;
   }
   const payment = await fetchPayment(mollie, paymentId);
   const metadata = payment ? parsePurchaseMetadata(payment.metadata) : null;
-  if (!payment || !metadata || (expectedToken !== undefined && metadata.token !== expectedToken)) {
-    return null;
+  if (payment && metadata) {
+    await settlePayment(payment, metadata);
   }
-  return settlePayment(payment, metadata);
 }

@@ -1,5 +1,5 @@
 /**
- * The three calls of Mollie's Payments API this app makes, over Nuxt's own
+ * The two calls of Mollie's Payments API this app makes, over Nuxt's own
  * `$fetch`. Mollie's SDK would add a legacy HTTP client for them and insists
  * on `https:`, which rules out the local stand-in the end-to-end tests use.
  *
@@ -39,8 +39,6 @@ export function createMollieApi(options: { apiKey: string, apiEndpoint?: string 
   return {
     createPayment: (body: CreatePaymentBody) =>
       api<MolliePayment>('payments', { method: 'POST', body }),
-    updatePayment: (id: string, body: { redirectUrl: string }) =>
-      api<MolliePayment>(paymentPath(id), { method: 'PATCH', body }),
     getPayment: (id: string) =>
       api<MolliePayment>(paymentPath(id)),
   };

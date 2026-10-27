@@ -25,16 +25,16 @@ sequenceDiagram
     V->>P: picks "1 year – €49.00"
     P->>A: POST /api/purchase/{token} { period: year }
     A->>M: create payment (amount, description, metadata, redirectUrl, webhookUrl)
-    A->>M: update redirectUrl → /{token}?payment=tr_…
+    A->>A: remember it as the token's open payment
     A-->>P: { checkoutUrl }
     P->>M: redirect to hosted checkout
     V->>M: pays
     M-)A: POST /api/payments/webhook  id=tr_…
     A->>M: GET payment tr_… (status, metadata)
     A->>A: paid → extend token (once per payment)
-    M->>P: redirect back to /{token}?payment=tr_…
-    P->>A: POST /api/purchase/{token}/tr_…
-    A->>M: GET payment tr_… (same check as the webhook)
+    M->>P: redirect back to /{token}?checkout=returned
+    P->>A: POST /api/purchase/{token}/confirm
+    A->>M: GET the token's open payment (same check as the webhook)
     A-->>P: { status: paid }
     P->>A: GET /api/access/{token}
     A-->>P: player (or the group's list)
@@ -58,10 +58,10 @@ sequenceDiagram
 
 ### Returning from Mollie
 
-Mollie's redirect carries no payment id, so the id is put into the redirect
-URL itself: the payment is created first, then its `redirectUrl` is updated to
-`/{token}?payment=tr_…`. The token page confirms that payment before it loads
-anything else:
+Mollie's redirect carries no payment id, and needs none: the token remembers
+the payment it started (see below). The `redirectUrl`, set once when the
+payment is created, is `/{token}?checkout=returned`; the marker only tells the
+page to ask about the token's open payment before it loads anything else:
 
 | Payment status                  | Page shows                                                     |
 | ------------------------------- | -------------------------------------------------------------- |
@@ -100,10 +100,6 @@ without the visitor coming back is applied the same way.
 An open payment cannot simply be canceled on the visitor's behalf: Mollie only
 lets a few methods be canceled through its API (a fresh payment without a
 method cannot), so its expiry is what ends it.
-
-If the update of the `redirectUrl` fails, the visitor comes back without the
-id. The token still knows its open payment, and the page they return to asks
-Mollie about it.
 
 ---
 
@@ -192,8 +188,8 @@ belongs anyway.
   make the app look up a payment that is real.
 - **The payment decides, not the request.** Token, period and amount are all
   read back from Mollie. The payment's `metadata.tokenId` must match the token
-  it is applied to, and the return page additionally checks that it matches the
-  token in its URL.
+  it is applied to. The return page names no payment at all, only the token,
+  whose own open payment is looked up.
 - **One payment at a time.** While the token's payment is open, starting a
   purchase returns that payment's checkout instead of creating another. A late
   webhook for an older payment only clears the open payment if it is that one.
@@ -250,16 +246,16 @@ never a sum of the group's media.
 
 ## 6. Endpoints
 
-| Method  | Path                              | Auth   | Purpose                                         |
-| ------- | --------------------------------- | ------ | ----------------------------------------------- |
-| `GET`   | `/api/access/:token`              | public | now also returns `purchaseOptions` when expired |
-| `GET`   | `/api/access/:token/:mediaId`     | public | the same for a blocked media of a group         |
-| `POST`  | `/api/purchase/:token`            | public | `{ period, locale }` → `{ checkoutUrl }` (¹)    |
-| `POST`  | `/api/purchase/:token/:paymentId` | public | confirms (and applies) a payment → `{ status }` |
-| `POST`  | `/api/payments/webhook`           | public | Mollie status updates                           |
-| `PATCH` | `/api/media/:id`                  | admin  | `{ priceMonth, priceYear }`                     |
-| `PATCH` | `/api/groups/:id`                 | admin  | now also accepts `priceMonth`, `priceYear`      |
-| `GET`   | `/api/payments/settings`          | admin  | `{ enabled }` for the admin hint                |
+| Method  | Path                           | Auth   | Purpose                                                        |
+| ------- | ------------------------------ | ------ | -------------------------------------------------------------- |
+| `GET`   | `/api/access/:token`           | public | now also returns `purchaseOptions` when expired                |
+| `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                        |
+| `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                   |
+| `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status }` |
+| `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                          |
+| `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                    |
+| `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                     |
+| `GET`   | `/api/payments/settings`       | admin  | `{ enabled }` for the admin hint                               |
 
 `purchaseOptions` is `[{ period: 'month' | 'year', amount: 900, currency: 'EUR' }]`
 with `amount` in minor units; the page formats it with `Intl.NumberFormat`.
@@ -278,27 +274,27 @@ checkout left to show.
 server/
 ├── api/
 │   ├── purchase/[token].post.ts
-│   ├── purchase/[token]/[paymentId].post.ts
+│   ├── purchase/[token]/confirm.post.ts
 │   ├── media/[id].patch.ts
 │   └── payments/
 │       ├── settings.get.ts
 │       └── webhook.post.ts
 ├── services/paymentService.ts   # create + confirm payments, apply them
 └── utils/
-    ├── mollieApi.ts             # the three Mollie REST calls, over $fetch
+    ├── mollieApi.ts             # the two Mollie REST calls, over $fetch
     ├── priceInput.ts            # validates admin price updates
     └── purchase.ts              # pure rules: options, extension, metadata
 utils/money.ts                   # minor units ⇄ Mollie amount string / input
 components/
 ├── PublicPurchaseOptions.vue    # buttons on the expired page and group list
 └── PurchasePricesCard.vue       # admin price editor, media + group page
-composables/usePaymentReturn.ts  # ?payment= handling on the token page
+composables/usePaymentReturn.ts  # ?checkout=returned handling on the token page
 e2e/support/mollieStub.ts        # local Mollie stand-in for the E2E suite
 ```
 
 Mollie's official SDK was tried first and dropped: it only accepts an
 `https:` endpoint, which rules out the local stand-in the E2E tests run
-against, and it brings a legacy HTTP client for what are three plain REST
+against, and it brings a legacy HTTP client for what are two plain REST
 calls. `NUXT_MOLLIE_API_ENDPOINT` points the app at the stand-in; production
 leaves it empty.
 
@@ -345,16 +341,14 @@ the visitor would land on "your access has ended" until the webhook arrived,
 and local development would not work at all. Confirming on return uses the
 exact same check, and the transaction makes the two race-free.
 
-**The second Mollie call to put the id into the redirect URL.** Alternatives
-were a cookie (lost when a banking app returns the visitor in a different
-browser) or waiting for the webhook only (see above). The update is cheap and
-failing it degrades to webhook-only instead of breaking.
-
-**Remembering the open payment on the token.** The alternative was to know
-it only from `?payment=` in the return URL. That is lost on a reload, in a
-different browser and whenever the `redirectUrl` update failed, and the
-visitor would then be offered a second payment next to one they can still
-pay. Two columns on the token hold it — id and checkout URL — since a token
+**Remembering the open payment on the token.** The alternatives were to
+carry the payment id in the return URL — which costs a second Mollie call to
+update the `redirectUrl` once the id exists — or a cookie, lost when a banking
+app returns the visitor in a different browser. Both are lost on a reload or a
+later visit, and the visitor would then be offered a second payment next to
+one they can still pay. The token knowing its payment makes the id in the URL
+unnecessary: the return page asks about the token's payment, so a crafted URL
+cannot point it at any other. Two columns on the token hold it — id and checkout URL — since a token
 has at most one payment in progress; it is cleared only for that very payment, so a late webhook of an
 older one cannot drop a newer. Asking Mollie on every load of an expired page
 costs one API call, and only while a payment is open.

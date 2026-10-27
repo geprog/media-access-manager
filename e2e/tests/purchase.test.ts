@@ -100,7 +100,7 @@ test.describe('Buying access again', () => {
     await expect(page.getByLabel('Price for 1 year')).toHaveValue('€49.00');
   });
 
-  test('a visitor pays for a year and watches again', async ({ page }, testInfo) => {
+  test('a visitor pays for a year and watches again', async ({ page, request }, testInfo) => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     const { mediaId, token } = await visitExpiredPricedMedia(page, title);
 
@@ -127,8 +127,13 @@ test.describe('Buying access again', () => {
     await page.getByRole('button', { name: 'Pay' }).click();
 
     await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
-    // The payment id is dropped from the address once it has been confirmed.
+    // The return marker is dropped from the address once the payment is confirmed.
     await expect(page).toHaveURL(`/${token}`);
+    // Mollie is told the token page once, at creation; nothing is updated later.
+    const sent: Array<{ redirectUrl: string }> = await (await request.get(
+      new URL('../__payments', process.env.NUXT_MOLLIE_API_ENDPOINT).href,
+    )).json();
+    expect(sent.at(-1)?.redirectUrl).toMatch(new RegExp(`/${token}\\?checkout=returned$`));
 
     // The token itself was renewed: a year from now, and no view limit.
     const renewed = await readToken(page, mediaId, token);

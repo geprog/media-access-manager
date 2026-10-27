@@ -3,7 +3,7 @@
  * reaching Mollie. The app server talks to it through `NUXT_MOLLIE_API_ENDPOINT`;
  * the browser visits its `/checkout/:id` page instead of Mollie's hosted one.
  *
- * Covers only what the app uses: create, update and get a payment. `GET
+ * Covers only what the app uses: create and get a payment. `GET
  * /__payments` lets a test see what the app sent, e.g. the description, and
  * `POST /__payments/:id/expire` lets a payment expire as Mollie's would.
  *
@@ -131,9 +131,6 @@ createServer(async (request, response) => {
   const payment = id ? payments.get(id) : undefined;
   if (!payment) {
     return notFound(response);
-  }
-  if (request.method === 'PATCH') {
-    Object.assign(payment, await readJson(request));
   }
   return send(response, 200, payment);
 }).listen(port, () => {
