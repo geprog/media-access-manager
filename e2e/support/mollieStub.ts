@@ -127,6 +127,7 @@ createServer(async (request, response) => {
       _links: {
         self: { href: `${base}/v2/payments/${paymentId}`, type: 'application/hal+json' },
         checkout: { href: `${base}/checkout/${paymentId}`, type: 'text/html' },
+        dashboard: { href: `${base}/dashboard/payments/${paymentId}`, type: 'text/html' },
       },
     };
     payments.set(paymentId, payment);

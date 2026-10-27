@@ -18,6 +18,8 @@ export interface MolliePayment {
   metadata: unknown
   _links: {
     checkout?: { href: string }
+    /** The payment in the Mollie dashboard, for the account's own people only. */
+    dashboard?: { href: string }
   }
 }
 

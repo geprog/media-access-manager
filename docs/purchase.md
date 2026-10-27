@@ -54,7 +54,9 @@ sequenceDiagram
   today, with the support mail link.
 - The support mail link stays next to the purchase buttons as the fallback.
 - **Admins** opening an expired link keep seeing the way to their media or
-  group, not a checkout.
+  group, not a checkout. While the token has a payment in progress, they also
+  get **View payment in Mollie**, the payment in the Mollie dashboard, to
+  follow it there.
 
 ### Opening the token page, also when returning from Mollie
 
@@ -76,6 +78,19 @@ lookup, no call to Mollie, behind the page's usual loader:
 Only `pending` and `authorized` hold the page back: Mollie finishes those
 within moments. A bank transfer stays `open` for days, and waiting for it on
 every visit would only keep the visitor from the page.
+
+Should a payment still be processed after two minutes, the page loads anyway
+and says so: it is taking longer than usual, the page need not stay open, and
+the link starts working by itself once Mollie confirms the payment. A
+**Contact support** mail, with the link filled in, sits right there — a
+payment that stays pending is a case for a person, who finds it in the Mollie
+dashboard through the token in its metadata.
+
+The visitor is deliberately not sent back to Mollie for a pending payment.
+Mollie's API hands out no checkout link for one, and the checkout URL from the
+payment's creation opens the method picker again: a visitor who believes the
+payment stuck would most likely start a second attempt with another method
+while the first is still being processed.
 
 ### A payment left open
 
@@ -254,25 +269,28 @@ never a sum of the group's media.
 
 ## 6. Endpoints
 
-| Method  | Path                           | Auth   | Purpose                                                        |
-| ------- | ------------------------------ | ------ | -------------------------------------------------------------- |
-| `GET`   | `/api/access/:token`           | public | now also returns `purchaseOptions` when expired                |
-| `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                        |
-| `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                   |
-| `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status }` |
-| `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                          |
-| `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                    |
-| `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                     |
-| `GET`   | `/api/payments/settings`       | admin  | `{ enabled }` for the admin hint                               |
+| Method  | Path                           | Auth   | Purpose                                                                          |
+| ------- | ------------------------------ | ------ | -------------------------------------------------------------------------------- |
+| `GET`   | `/api/access/:token`           | public | now also returns `purchaseOptions` when expired                                  |
+| `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                                          |
+| `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                                     |
+| `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status, dashboardUrl }` (²) |
+| `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                                            |
+| `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                                      |
+| `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                                       |
+| `GET`   | `/api/payments/settings`       | admin  | `{ enabled }` for the admin hint                                                 |
 
 `purchaseOptions` is `[{ period: 'month' | 'year', amount: 900, currency: 'EUR' }]`
 with `amount` in minor units; the page formats it with `Intl.NumberFormat`.
-Next to it, `openPayment` is `{ period, status: 'open' | 'pending', resumable }`
+Next to it, `openPayment` is `{ period, status: 'open' | 'pending' | 'transfer', resumable }`
 while the token has a payment Mollie still holds open, `null` otherwise.
 
 (¹) The checkout of the token's open payment while there is one; `409
 payment_in_progress` when that payment is being processed and Mollie has no
 checkout left to show.
+
+(²) `dashboardUrl` is the payment in the Mollie dashboard, set for a logged-in
+admin only and `null` for everyone else.
 
 ---
 
@@ -294,6 +312,7 @@ server/
     └── purchase.ts              # pure rules: options, extension, metadata
 utils/money.ts                   # minor units ⇄ Mollie amount string / input
 components/
+├── PublicPaymentNotice.vue      # late or failed payment, admin link to Mollie
 ├── PublicPurchaseOptions.vue    # buttons on the expired page and group list
 └── PurchasePricesCard.vue       # admin price editor, media + group page
 composables/usePaymentCheck.ts   # settles the token's payment before the page loads

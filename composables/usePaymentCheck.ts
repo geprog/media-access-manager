@@ -18,7 +18,10 @@ import type { MaybeRefOrGetter } from 'vue';
  */
 export type PaymentCheckState = 'idle' | 'checking' | 'pending' | 'failed' | 'timeout';
 
-/** Card and wallet payments are processed in a moment; two minutes covers the usual cases. */
+/**
+ * Card and wallet payments are processed in a moment; two minutes covers the
+ * usual cases. Past that the page loads anyway and says it may take longer.
+ */
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 40;
 type PaymentStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed';
@@ -31,6 +34,8 @@ type PaymentStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed';
  */
 export function usePaymentCheck(token: MaybeRefOrGetter<string>, onSettled: () => unknown) {
   const state = ref<PaymentCheckState>('checking');
+  /** Only ever set for an admin: the payment in the Mollie dashboard. */
+  const dashboardUrl = ref<string | null>(null);
   let stopped = false;
 
   onBeforeUnmount(() => {
@@ -50,10 +55,12 @@ export function usePaymentCheck(token: MaybeRefOrGetter<string>, onSettled: () =
     try {
       // `null` when no payment is in progress, e.g. none was started or the
       // webhook already applied it.
-      ({ status } = await $fetch<{ status: PaymentStatus | null }>(
+      const check = await $fetch<{ status: PaymentStatus | null, dashboardUrl: string | null }>(
         `/api/purchase/${encodeURIComponent(toValue(token))}/confirm`,
         { method: 'POST' },
-      ));
+      );
+      status = check.status;
+      dashboardUrl.value = check.dashboardUrl;
     }
     catch {
       // An unknown token, or Mollie unreachable: the token page itself shows
@@ -73,5 +80,5 @@ export function usePaymentCheck(token: MaybeRefOrGetter<string>, onSettled: () =
 
   poll(0);
 
-  return { state };
+  return { state, dashboardUrl };
 }

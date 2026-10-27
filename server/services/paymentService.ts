@@ -129,6 +129,7 @@ interface OpenPaymentState {
   status: PurchaseStatus
   period: PurchasePeriod
   checkoutUrl: string | null
+  dashboardUrl: string | null
 }
 
 /**
@@ -154,7 +155,7 @@ async function refreshOpenPayment(mollie: MollieApi, tokenRow: Token): Promise<O
   // checkout link, though the page still lets the visitor try again.
   const checkoutUrl = payment._links.checkout?.href
     ?? (status === 'open' ? tokenRow.openPaymentCheckoutUrl : null);
-  return { status, period: metadata.period, checkoutUrl };
+  return { status, period: metadata.period, checkoutUrl, dashboardUrl: payment._links.dashboard?.href ?? null };
 }
 
 function isOngoing(state: OpenPaymentState | null): state is OpenPaymentState & { status: OpenPayment['status'] } {
@@ -267,26 +268,34 @@ export async function startPurchase(data: {
   return { checkoutUrl };
 }
 
+export interface TokenPaymentCheck {
+  /**
+   * `null` when the token has no payment in progress (any longer), e.g.
+   * because the webhook already applied it, or when purchasing is off.
+   */
+  status: PurchaseStatus | null
+  /** The payment in the Mollie dashboard, where an admin can follow it. */
+  dashboardUrl: string | null
+}
+
 /**
  * How the token's open payment stands, settled the same way the webhook would,
  * so a visitor back from Mollie with a paid one sees the content without
  * waiting for Mollie's call — and so it works where Mollie cannot call at all,
- * like a local setup. Asked whenever the token page loads.
- *
- * `null` when the token has no payment in progress (any longer), e.g. because
- * the webhook already applied it, or when purchasing is off. No call to Mollie
- * is made then.
+ * like a local setup. Asked whenever the token page loads; without an open
+ * payment no call to Mollie is made.
  */
-export async function confirmTokenPayment(tokenValue: string): Promise<PurchaseStatus | null> {
+export async function confirmTokenPayment(tokenValue: string): Promise<TokenPaymentCheck> {
   const mollie = useMollie();
   if (!mollie) {
-    return null;
+    return { status: null, dashboardUrl: null };
   }
   const tokenRow = await findTokenByValue(tokenValue);
   if (!tokenRow) {
     throw new PurchaseUnavailableError();
   }
-  return (await refreshOpenPayment(mollie, tokenRow))?.status ?? null;
+  const open = await refreshOpenPayment(mollie, tokenRow);
+  return { status: open?.status ?? null, dashboardUrl: open?.dashboardUrl ?? null };
 }
 
 /**

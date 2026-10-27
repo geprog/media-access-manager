@@ -2,15 +2,23 @@
   <div class="flex min-h-screen flex-col items-center p-4" :class="centered ? 'justify-center' : 'py-8'">
     <!-- A payment being processed: nothing is shown until it is through, or
          someone who just paid would be told their access has ended. -->
-    <PublicAccessLoading v-if="paymentMessage" :message="paymentMessage" />
+    <template v-if="paymentMessage">
+      <PublicAccessLoading :message="paymentMessage" />
+      <PublicPaymentNotice
+        class="mt-6"
+        :token="token"
+        :state="paymentState"
+        :dashboard-url="dashboardUrl"
+        :content-shown="!!access"
+      />
+    </template>
     <template v-else>
-      <UAlert
-        v-if="paymentNotice"
-        class="mb-6 max-w-md"
-        color="warning"
-        variant="subtle"
-        icon="i-heroicons-exclamation-circle"
-        :title="paymentNotice"
+      <PublicPaymentNotice
+        class="mb-6"
+        :token="token"
+        :state="paymentState"
+        :dashboard-url="dashboardUrl"
+        :content-shown="!!access"
       />
       <PublicAccessLoading v-if="loading" />
       <PublicAccessDenied
@@ -83,20 +91,11 @@ const { data: access, error, status, execute } = useFetch(
   { getCachedData: () => undefined, immediate: false },
 );
 
-const { state: paymentState } = usePaymentCheck(token, execute);
+const { state: paymentState, dashboardUrl } = usePaymentCheck(token, execute);
 
 // Only a payment being processed is worth a word; the check itself happens on
 // every load and hides behind the usual loader.
 const paymentMessage = computed(() => paymentState.value === 'pending' ? t('public_payment_pending') : null);
-
-const paymentNotice = computed(() => {
-  if (paymentState.value === 'failed') {
-    return t('public_payment_failed');
-  }
-  // Only worth saying while the token still looks expired; once the webhook
-  // got through, the content is the answer.
-  return paymentState.value === 'timeout' && !access.value ? t('public_payment_timeout') : null;
-});
 
 const { confirming, error: confirmError, confirm } = useViewConfirmation(accessUrl, access);
 

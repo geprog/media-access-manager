@@ -1,15 +1,24 @@
 <template>
   <div class="flex min-h-screen flex-col items-center justify-center p-4">
-    <UAlert
-      v-if="paymentNotice && !loading"
-      class="mb-6 max-w-md"
-      color="warning"
-      variant="subtle"
-      icon="i-heroicons-exclamation-circle"
-      :title="paymentNotice"
-    />
     <!-- A payment being processed holds the page back, as on the token page. -->
-    <PublicAccessLoading v-if="loading" :message="paymentMessage ?? undefined" />
+    <PublicPaymentNotice
+      v-if="!loading"
+      class="mb-6"
+      :token="token"
+      :state="paymentState"
+      :dashboard-url="dashboardUrl"
+      :content-shown="!!access"
+    />
+    <template v-if="loading">
+      <PublicAccessLoading :message="paymentMessage ?? undefined" />
+      <PublicPaymentNotice
+        class="mt-6"
+        :token="token"
+        :state="paymentState"
+        :dashboard-url="dashboardUrl"
+        :content-shown="!!access"
+      />
+    </template>
     <PublicAccessDenied
       v-else-if="!access"
       :token="token"
@@ -91,16 +100,9 @@ const { data: access, error, status, execute } = useFetch(
   { getCachedData: () => undefined, immediate: false },
 );
 
-const { state: paymentState } = usePaymentCheck(token, execute);
+const { state: paymentState, dashboardUrl } = usePaymentCheck(token, execute);
 
 const paymentMessage = computed(() => paymentState.value === 'pending' ? t('public_payment_pending') : null);
-
-const paymentNotice = computed(() => {
-  if (paymentState.value === 'failed') {
-    return t('public_payment_failed');
-  }
-  return paymentState.value === 'timeout' && !access.value ? t('public_payment_timeout') : null;
-});
 
 const { confirming, error: confirmError, confirm } = useViewConfirmation(accessUrl, access);
 

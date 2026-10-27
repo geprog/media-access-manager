@@ -236,6 +236,8 @@ test.describe('Buying access again', () => {
 
     await expect(page.getByText(/payment is being processed/i)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/access to this video has ended/i)).toHaveCount(0);
+    // The Mollie dashboard is the account's own view, not the visitor's.
+    await expect(page.getByRole('link', { name: 'View payment in Mollie' })).toHaveCount(0);
 
     await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
       status: 200,
@@ -249,6 +251,22 @@ test.describe('Buying access again', () => {
     }));
     expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
     await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('shows an admin the payment in Mollie while it is processed', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1];
+    expect((await setStubPaymentStatus(request, paymentId, 'pending')).ok()).toBe(true);
+
+    await login(page);
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/payment is being processed/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', new RegExp(`/dashboard/payments/${paymentId}$`));
   });
 
   test('offers nothing to buy for media without prices', async ({ page }, testInfo) => {
