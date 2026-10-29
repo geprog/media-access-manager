@@ -149,3 +149,16 @@ export function classifyPaymentStatus(status: string, method: string | null): Pu
   }
   return ['pending', 'authorized'].includes(status) ? 'pending' : 'failed';
 }
+
+/**
+ * Cards and wallets are confirmed within moments of the checkout, so a page
+ * opened right after one is worth holding back for. A payment this much older
+ * and still being processed is taking longer than any page should wait: it
+ * loads and says so instead.
+ */
+const PENDING_WAIT_MS = 15 * 60 * 1000;
+
+export function isPaymentRecent(createdAt: string, now: Date = new Date()): boolean {
+  const created = new Date(createdAt).getTime();
+  return !Number.isNaN(created) && now.getTime() - created < PENDING_WAIT_MS;
+}

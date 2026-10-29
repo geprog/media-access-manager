@@ -3,6 +3,7 @@ import {
   buildPaymentDescription,
   classifyPaymentStatus,
   getPurchaseOptions,
+  isPaymentRecent,
   isPurchasePeriod,
   parsePurchaseMetadata,
   purchaseExpiry,
@@ -47,6 +48,19 @@ describe('purchaseExpiry', () => {
   it('ends a year bought on a leap day on 28 February', () => {
     const leapDay = new Date('2028-02-29T12:00:00Z');
     expect(purchaseExpiry('year', leapDay)).toEqual(new Date('2029-02-28T12:00:00Z'));
+  });
+});
+
+describe('isPaymentRecent', () => {
+  const now = new Date('2026-03-10T12:00:00Z');
+
+  it('holds the page back for a payment started minutes ago', () => {
+    expect(isPaymentRecent('2026-03-10T11:50:00Z', now)).toBe(true);
+  });
+
+  it('does not for one started long ago, or with no usable date', () => {
+    expect(isPaymentRecent('2026-03-10T11:30:00Z', now)).toBe(false);
+    expect(isPaymentRecent('not a date', now)).toBe(false);
   });
 });
 

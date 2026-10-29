@@ -21,6 +21,8 @@ export interface MolliePayment {
   status: string
   /** `null` until the customer picked one on the checkout. */
   method: string | null
+  /** ISO 8601, when the payment was created. */
+  createdAt: string
   metadata: unknown
   _links: {
     checkout?: { href: string }

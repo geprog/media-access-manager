@@ -9,8 +9,9 @@ import type { MaybeRefOrGetter } from 'vue';
  *   paid.
  * - `failed`: the payment ended without money; the page loads as usual and
  *   offers the purchase again.
- * - `timeout`: still processing after a while; the page loads anyway, in case
- *   the webhook got through in the meantime.
+ * - `timeout`: still processing after a while — the polls here ran out, or
+ *   the payment was started long enough ago that the server says not to
+ *   wait for it; the page loads anyway and says it is taking longer.
  *
  * A payment left `open` at Mollie's checkout, or a bank transfer on its way,
  * is nothing to wait for: the page loads and offers to continue it, or says
@@ -25,6 +26,14 @@ export type PaymentCheckState = 'idle' | 'checking' | 'pending' | 'failed' | 'ti
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 40;
 type PaymentStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed';
+
+interface PaymentCheck {
+  /** `null` when no payment is in progress, e.g. none was started or the webhook already applied it. */
+  status: PaymentStatus | null
+  /** Whether a `pending` payment is recent enough to be worth holding the page for. */
+  wait: boolean
+  dashboardUrl: string | null
+}
 
 /**
  * Settles the token's payment before the token page loads, then calls
@@ -51,24 +60,24 @@ export function usePaymentCheck(token: MaybeRefOrGetter<string>, onSettled: () =
     if (stopped) {
       return;
     }
-    let status: PaymentStatus | null;
+    let check: PaymentCheck;
     try {
-      // `null` when no payment is in progress, e.g. none was started or the
-      // webhook already applied it.
-      const check = await $fetch<{ status: PaymentStatus | null, dashboardUrl: string | null }>(
+      check = await $fetch<PaymentCheck>(
         `/api/purchase/${encodeURIComponent(toValue(token))}/confirm`,
         { method: 'POST' },
       );
-      status = check.status;
       dashboardUrl.value = check.dashboardUrl;
     }
     catch {
       // An unknown token, or Mollie unreachable: the token page itself shows
       // whatever state the token is in.
-      status = null;
+      check = { status: null, wait: false, dashboardUrl: null };
     }
+    const { status } = check;
     if (status === 'pending') {
-      if (attempt + 1 >= MAX_POLLS) {
+      // Not every visit waits again for a payment that has been processing
+      // for a long time: the server says when it stopped being worth it.
+      if (!check.wait || attempt + 1 >= MAX_POLLS) {
         return settle('timeout');
       }
       state.value = 'pending';

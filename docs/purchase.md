@@ -86,6 +86,13 @@ the link starts working by itself once Mollie confirms the payment. A
 payment that stays pending is a case for a person, who finds it in the Mollie
 dashboard through the token in its metadata.
 
+The wait is for a payment just made. The confirm call answers `wait: false`
+for a `pending` payment created more than fifteen minutes ago, and the page
+then loads straight away with the same notice: a payment processing for that
+long is not going to finish in the next two minutes, and every visit waiting
+them out again would only keep the visitor from the page. Not from a second
+purchase, though — that stays off until Mollie settles the first.
+
 The visitor is deliberately not sent back to Mollie for a pending payment.
 Mollie's API hands out no checkout link for one, and the checkout URL from the
 payment's creation opens the method picker again: a visitor who believes the
@@ -278,16 +285,16 @@ never a sum of the group's media.
 
 ## 6. Endpoints
 
-| Method  | Path                           | Auth   | Purpose                                                                          |
-| ------- | ------------------------------ | ------ | -------------------------------------------------------------------------------- |
-| `GET`   | `/api/access/:token`           | public | now also returns `purchaseOptions` when expired                                  |
-| `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                                          |
-| `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                                     |
-| `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status, dashboardUrl }` (²) |
-| `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                                            |
-| `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                                      |
-| `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                                       |
-| `GET`   | `/api/payments/settings`       | admin  | `{ enabled }` for the admin hint                                                 |
+| Method  | Path                           | Auth   | Purpose                                                                                |
+| ------- | ------------------------------ | ------ | -------------------------------------------------------------------------------------- |
+| `GET`   | `/api/access/:token`           | public | now also returns `purchaseOptions` when expired                                        |
+| `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                                                |
+| `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                                           |
+| `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status, wait, dashboardUrl }` (²) |
+| `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                                                  |
+| `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                                            |
+| `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                                             |
+| `GET`   | `/api/payments/settings`       | admin  | `{ enabled }` for the admin hint                                                       |
 
 `purchaseOptions` is `[{ period: 'month' | 'year', amount: 900, currency: 'EUR' }]`
 with `amount` in minor units; the page formats it with `Intl.NumberFormat`.
@@ -298,8 +305,9 @@ while the token has a payment Mollie still holds open, `null` otherwise.
 payment_in_progress` when that payment is being processed and Mollie has no
 checkout left to show.
 
-(²) `dashboardUrl` is the payment in the Mollie dashboard, set for a logged-in
-admin only and `null` for everyone else.
+(²) `wait` says whether the page should hold back: a `pending` payment started
+within the last fifteen minutes. `dashboardUrl` is the payment in the Mollie
+dashboard, set for a logged-in admin only and `null` for everyone else.
 
 ---
 

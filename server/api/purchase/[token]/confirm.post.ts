@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
   }
   return {
     status: check.status,
+    wait: check.wait,
     dashboardUrl: await isAdminRequest(event) ? check.dashboardUrl : null,
   };
 });

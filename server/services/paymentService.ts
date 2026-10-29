@@ -7,6 +7,7 @@ import {
   buildPaymentDescription,
   classifyPaymentStatus,
   getPurchaseOptions,
+  isPaymentRecent,
   parsePurchaseMetadata,
   toMollieLocale,
 } from '../utils/purchase';
@@ -130,6 +131,8 @@ interface OpenPaymentState {
   period: PurchasePeriod
   checkoutUrl: string | null
   dashboardUrl: string | null
+  /** Started a few minutes ago at most: worth waiting for while it is processed. */
+  recent: boolean
 }
 
 /**
@@ -155,7 +158,13 @@ async function refreshOpenPayment(mollie: MollieApi, tokenRow: Token): Promise<O
   // checkout link, though the page still lets the visitor try again.
   const checkoutUrl = payment._links.checkout?.href
     ?? (status === 'open' ? tokenRow.openPaymentCheckoutUrl : null);
-  return { status, period: metadata.period, checkoutUrl, dashboardUrl: payment._links.dashboard?.href ?? null };
+  return {
+    status,
+    period: metadata.period,
+    checkoutUrl,
+    dashboardUrl: payment._links.dashboard?.href ?? null,
+    recent: isPaymentRecent(payment.createdAt),
+  };
 }
 
 function isOngoing(state: OpenPaymentState | null): state is OpenPaymentState & { status: OpenPayment['status'] } {
@@ -283,6 +292,13 @@ export interface TokenPaymentCheck {
    * because the webhook already applied it, or when purchasing is off.
    */
   status: PurchaseStatus | null
+  /**
+   * Whether the page should hold back for this payment: it is being
+   * processed and was started a few minutes ago at most. One older than
+   * that is taking longer than any page should wait, and the page says so
+   * instead of making every visit wait again.
+   */
+  wait: boolean
   /** The payment in the Mollie dashboard, where an admin can follow it. */
   dashboardUrl: string | null
 }
@@ -297,14 +313,18 @@ export interface TokenPaymentCheck {
 export async function confirmTokenPayment(tokenValue: string): Promise<TokenPaymentCheck> {
   const mollie = useMollie();
   if (!mollie) {
-    return { status: null, dashboardUrl: null };
+    return { status: null, wait: false, dashboardUrl: null };
   }
   const tokenRow = await findTokenByValue(tokenValue);
   if (!tokenRow) {
     throw new PurchaseUnavailableError();
   }
   const open = await refreshOpenPayment(mollie, tokenRow);
-  return { status: open?.status ?? null, dashboardUrl: open?.dashboardUrl ?? null };
+  return {
+    status: open?.status ?? null,
+    wait: open?.status === 'pending' && open.recent,
+    dashboardUrl: open?.dashboardUrl ?? null,
+  };
 }
 
 /**
