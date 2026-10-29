@@ -1,7 +1,7 @@
 import type { Token } from '../db/schema';
 import type { MollieApi, MolliePayment } from '../utils/mollieApi';
 import type { PurchaseMetadata, PurchaseOption, PurchasePeriod, PurchaseStatus } from '../utils/purchase';
-import { toMollieAmount } from '../../utils/money';
+import { toMinorUnits, toMollieAmount } from '../../utils/money';
 import { createMollieApi } from '../utils/mollieApi';
 import {
   buildPaymentDescription,
@@ -142,7 +142,14 @@ async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata)
     recordPaymentNotice({ paymentId: payment.id, kind: 'unapplied', ...noticeDetails(payment) });
     return null;
   }
-  applyTokenPurchase({ tokenId: tokenRow.id, paymentId: payment.id, period: metadata.period });
+  applyTokenPurchase({
+    tokenId: tokenRow.id,
+    paymentId: payment.id,
+    period: metadata.period,
+    amount: toMinorUnits(Number(payment.amount.value), payment.amount.currency),
+    currency: payment.amount.currency,
+    dashboardUrl: payment._links.dashboard?.href ?? null,
+  });
   return 'paid';
 }
 

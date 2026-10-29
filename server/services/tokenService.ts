@@ -1,4 +1,4 @@
-import type { Media, MediaGroup, Token, TokenView } from '../db/schema';
+import type { Media, MediaGroup, Token, TokenPurchase, TokenView } from '../db/schema';
 import type { DbTransaction } from '../utils/db';
 import type { GroupMediaAccess } from '../utils/groupAccess';
 import type { PurchasePeriod } from '../utils/purchase';
@@ -266,21 +266,24 @@ export interface TokenViewEntry extends TokenView {
   mediaTitle: string
 }
 
-export interface TokenViewHistory {
+export interface TokenHistory {
   token: Token
   /** The media or group the token unlocks, by name. */
   targetTitle: string | null
   /** Newest first. */
   views: TokenViewEntry[]
+  /** The payments that bought the token again, newest first. */
+  purchases: TokenPurchase[]
 }
 
 /**
- * Everything an admin needs when a visitor asks where their views went: the
- * token as it stands, and every view it spent, with the media each one opened.
- * Views spent before the history existed are not in it — `usageCount` still
- * counts them, so a count above the number of views means exactly that.
+ * Everything an admin needs when a visitor asks where their views went, or
+ * what they paid for: the token as it stands, every view it spent, with the
+ * media each one opened, and every payment that bought it again. Views spent
+ * before the history existed are not in it — `usageCount` still counts them,
+ * so a count above the number of views means exactly that.
  */
-export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHistory | null> {
+export async function getTokenHistory(tokenId: string): Promise<TokenHistory | null> {
   const db = useDb();
   const tokenRow = (await db.select().from(tokens).where(eq(tokens.id, tokenId)))[0];
   if (!tokenRow) {
@@ -292,6 +295,11 @@ export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHis
     .innerJoin(media, eq(media.id, tokenViews.mediaId))
     .where(eq(tokenViews.tokenId, tokenId))
     .orderBy(...newestViewFirst());
+  const purchases = await db
+    .select()
+    .from(tokenPurchases)
+    .where(eq(tokenPurchases.tokenId, tokenId))
+    .orderBy(desc(tokenPurchases.createdAt), desc(sql`${tokenPurchases}.rowid`));
   let targetTitle: string | null = null;
   if (tokenRow.mediaId) {
     targetTitle = (await getMediaById(tokenRow.mediaId))?.title ?? null;
@@ -299,7 +307,7 @@ export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHis
   else if (tokenRow.groupId) {
     targetTitle = (await getMediaGroupById(tokenRow.groupId))?.name ?? null;
   }
-  return { token: tokenRow, targetTitle, views };
+  return { token: tokenRow, targetTitle, views, purchases };
 }
 
 /**
@@ -615,6 +623,10 @@ export function applyTokenPurchase(data: {
   tokenId: string
   paymentId: string
   period: PurchasePeriod
+  /** What was paid, in minor units, for the token's history. */
+  amount: number
+  currency: string
+  dashboardUrl: string | null
   now?: Date
 }): PurchaseApplication {
   const db = useDb();
@@ -637,6 +649,9 @@ export function applyTokenPurchase(data: {
       paymentId: data.paymentId,
       tokenId: tokenRow.id,
       period: data.period,
+      amount: data.amount,
+      currency: data.currency,
+      dashboardUrl: data.dashboardUrl,
       expiresBefore: tokenRow.expiresAt,
       usageLimitBefore: tokenRow.usageLimit,
       expiresAfter,

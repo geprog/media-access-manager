@@ -244,6 +244,8 @@
   "purchase_save": "Save prices",
   "purchase_saved": "Prices saved",
   "purchase_disabled": "Purchasing is switched off for this deployment, so visitors see no prices yet. Set NUXT_MOLLIE_API_KEY to turn it on.",
+  "purchase_period_month": "1 month",
+  "purchase_period_year": "1 year",
   "payment_notice_unapplied": "A payment for \"{description}\" was completed, but the link it was for no longer exists. Refund it in Mollie.",
   "payment_notice_reverted": "A payment for \"{description}\" was refunded or charged back. The access it had bought was withdrawn.",
   "payment_notice_dismiss": "Dismiss",
@@ -288,5 +290,13 @@
   "token_history_usage": "Views spent",
   "token_history_views": "Views",
   "token_history_empty": "This token has not spent any view yet.",
+  "token_history_payments": "Payments",
+  "token_history_payments_empty": "Nothing has been bought for this token yet.",
+  "token_history_paid_at": "Paid on",
+  "token_history_period": "Period",
+  "token_history_amount": "Amount",
+  "token_history_payment_status": "Status",
+  "token_history_payment_paid": "Paid",
+  "token_history_payment_reverted": "Refunded or charged back on {date}",
   "token_history_unrecorded": "{count} view was spent before the history was kept and has no entry here. | {count} views were spent before the history was kept and have no entries here."
 }

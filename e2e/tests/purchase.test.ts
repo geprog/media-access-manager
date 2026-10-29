@@ -33,22 +33,36 @@ async function setMediaPrices(page: Page, mediaId: string, prices: { priceMonth:
   }, { id: mediaId, body: prices });
 }
 
-/** Only the admin API can hand out a token whose window already closed. */
+const EXPIRED_BATCH = 'E2E expired';
+
+/**
+ * Only the admin API can hand out a token whose window already closed. A
+ * batch of one, so the token is listed on the media page like any other.
+ */
 async function createExpiredToken(page: Page, mediaId: string): Promise<string> {
-  return page.evaluate(async (id) => {
-    const response = await fetch('/api/tokens', {
+  return page.evaluate(async ({ id, name }) => {
+    const response = await fetch('/api/batches', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         mediaId: id,
-        name: 'expired',
+        name,
+        count: 1,
         usageLimit: 3,
         expiresAt: new Date(Date.now() - 60 * 1000).toISOString(),
       }),
     });
-    const created: { token: string } = await response.json();
-    return created.token;
-  }, mediaId);
+    const created: { tokens: Array<{ token: string }> } = await response.json();
+    return created.tokens[0]?.token ?? '';
+  }, { id: mediaId, name: EXPIRED_BATCH });
+}
+
+/** The token's history dialog, opened from the media page as an admin would. */
+async function openTokenHistory(page: Page, mediaId: string, token: string) {
+  await page.goto(`/media/${mediaId}`);
+  await page.getByRole('button').filter({ hasText: EXPIRED_BATCH }).click();
+  await page.getByRole('row').filter({ hasText: token }).getByRole('button', { name: 'History' }).click();
+  return page.getByRole('dialog');
 }
 
 /** Changes a payment at the Mollie stand-in the way Mollie would on its own. */
@@ -161,6 +175,14 @@ test.describe('Buying access again', () => {
     const renewed = await readToken(page, mediaId, token);
     expectAboutAYearAhead(renewed);
     expect(renewed?.usageLimit).toBeNull();
+
+    // The admin finds the payment in the token's history, with the way to it in Mollie.
+    const dialog = await openTokenHistory(page, mediaId, token);
+    const payment = dialog.getByRole('row').filter({ hasText: '1 year' });
+    await expect(payment).toContainText('€49.00');
+    await expect(payment).toContainText('Paid');
+    await expect(payment.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', /\/dashboard\/payments\/tr_/);
   });
 
   test('a visitor who chose bank transfer can cancel it and pay another way', async ({ page }, testInfo) => {
@@ -226,6 +248,10 @@ test.describe('Buying access again', () => {
     const reverted = await fetchTokenRow(page, mediaId, token);
     expect(new Date(reverted?.expiresAt ?? 0).getTime()).toBeLessThan(Date.now());
     expect(reverted?.usageLimit).toBe(3);
+
+    // The token's history says so, next to the payment that bought nothing now.
+    const dialog = await openTokenHistory(page, mediaId, token);
+    await expect(dialog.getByRole('row').filter({ hasText: '1 month' })).toContainText(/refunded or charged back on/i);
 
     await page.goto('/');
     const notice = page.getByRole('alert').filter({ hasText: `${title} – 1 month access` });

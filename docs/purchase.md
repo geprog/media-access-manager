@@ -173,6 +173,13 @@ The admin is told either way (see §4).
 The token is a single row that a batch owns, so extending one visitor's token
 never touches the others of that batch.
 
+### What the admin sees
+
+The token's history dialog — **History** in the token list — lists the
+payments that bought the token again under the views it spent, newest first:
+when, which period, what was paid, whether the money went back, and the
+payment in Mollie. Nothing about the payer, as everywhere else.
+
 ---
 
 ## 3. Privacy: what is stored where
@@ -191,6 +198,8 @@ The app keeps one row per **paid** payment in `token_purchases`:
 | `payment_id` (PK)    | the only thing that stops a repeated webhook extending twice          |
 | `token_id`           | which token was extended                                              |
 | `period`             | `month` or `year`                                                     |
+| `amount`, `currency` | what the period cost at the time, for the token's history             |
+| `dashboard_url`      | the payment in the Mollie dashboard, for the same                     |
 | `expires_before`     | the token's end before the purchase, so an extension can be undone    |
 | `usage_limit_before` | and its view limit, for the same reason                               |
 | `expires_after`      | the end it got                                                        |
@@ -328,6 +337,7 @@ never a sum of the group's media.
 | `POST`  | `/api/payments/webhook`             | public | Mollie status updates, refunds and chargebacks included                                |
 | `GET`   | `/api/payments/notices`             | admin  | payments to look at, until dismissed                                                   |
 | `POST`  | `/api/payments/notices/:id/dismiss` | admin  | done looking                                                                           |
+| `GET`   | `/api/tokens/:id/history`           | admin  | the token's views and payments, newest first                                           |
 | `PATCH` | `/api/media/:id`                    | admin  | `{ priceMonth, priceYear }`                                                            |
 | `PATCH` | `/api/groups/:id`                   | admin  | now also accepts `priceMonth`, `priceYear`                                             |
 | `GET`   | `/api/payments/settings`            | admin  | `{ enabled }` for the admin hint                                                       |
@@ -371,6 +381,7 @@ server/
 utils/money.ts                   # minor units ⇄ Mollie amount string / input
 components/
 ├── PaymentNoticesBanner.vue     # admin: payments to look at, on every admin page
+├── TokenHistoryModal.vue        # admin: a token's views and payments
 ├── PublicPaymentNotice.vue      # late or failed payment, admin link to Mollie
 ├── PublicPurchaseOptions.vue    # buttons on the expired page and group list
 └── PurchasePricesCard.vue       # admin price editor, media + group page
@@ -408,8 +419,10 @@ Alternatives considered:
   to put the token back to when the money goes back, and nothing to stop the
   second webhook.
 
-Keeping the amount out of `token_purchases` costs nothing — revenue reporting
-is Mollie's dashboard, reachable from each payment via `adminUrl` in reverse.
+The amount is kept with the purchase only for the token's history, since the
+price may change later; revenue reporting is Mollie's dashboard, reachable
+from each payment via `adminUrl` in reverse and from the history through the
+dashboard link.
 
 **Is the token safe in Mollie's metadata?** The token _is_ the access
 credential, so anyone with Mollie dashboard access could watch the media. Those
@@ -455,6 +468,5 @@ the time the webhook arrives buys nothing; the admin is shown it, with the
 link into Mollie, where the refund is done and the money is.
 
 **Out of scope for now**, all addable without changing the model: VAT invoices
-(Mollie or a separate tool), showing a token's purchase history in the admin
-list, and recurring subscriptions via Mollie mandates (would need a customer
-id, which is personal data).
+(Mollie or a separate tool) and recurring subscriptions via Mollie mandates
+(would need a customer id, which is personal data).

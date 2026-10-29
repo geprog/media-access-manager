@@ -140,14 +140,23 @@ export const tokenViews = sqliteTable('token_views', {
 ]);
 
 /**
- * One row per *paid* Mollie payment that extended a token — and nothing about
- * who paid or how much: that stays with Mollie. The payment id is kept because
- * it is the only thing that stops a retried webhook from extending twice.
+ * One row per *paid* Mollie payment that extended a token: the token's payment
+ * history, and the only thing that stops a retried webhook from extending
+ * twice. What was paid is kept, nothing about who paid: that stays with Mollie.
  */
 export const tokenPurchases = sqliteTable('token_purchases', {
   paymentId: text('payment_id').primaryKey(),
   tokenId: text('token_id').notNull().references(() => tokens.id),
   period: text('period', { enum: ['month', 'year'] }).notNull(),
+  /**
+   * What the period cost at the time, in the currency's minor unit — the price
+   * may change later — and where the payment is in the Mollie dashboard, for
+   * the token's history in the admin UI. `null` on purchases from before this
+   * was kept.
+   */
+  amount: integer('amount'),
+  currency: text('currency'),
+  dashboardUrl: text('dashboard_url'),
   /**
    * The token's end and view limit before the purchase, so the extension can
    * be undone when the money goes back — a refund or a chargeback.

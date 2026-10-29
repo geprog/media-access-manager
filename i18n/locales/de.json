@@ -244,6 +244,8 @@
   "purchase_save": "Preise speichern",
   "purchase_saved": "Preise gespeichert",
   "purchase_disabled": "Käufe sind für diese Installation ausgeschaltet, Besucher sehen daher noch keine Preise. Setzen Sie NUXT_MOLLIE_API_KEY, um sie einzuschalten.",
+  "purchase_period_month": "1 Monat",
+  "purchase_period_year": "1 Jahr",
   "payment_notice_unapplied": "Eine Zahlung für „{description}“ ist eingegangen, aber der Link, für den sie war, existiert nicht mehr. Erstatten Sie sie in Mollie.",
   "payment_notice_reverted": "Eine Zahlung für „{description}“ wurde erstattet oder zurückgebucht. Der damit gekaufte Zugang wurde entzogen.",
   "payment_notice_dismiss": "Ausblenden",
@@ -288,5 +290,13 @@
   "token_history_usage": "Verbrauchte Aufrufe",
   "token_history_views": "Aufrufe",
   "token_history_empty": "Dieses Token hat noch keinen Aufruf verbraucht.",
+  "token_history_payments": "Zahlungen",
+  "token_history_payments_empty": "Für dieses Token wurde noch nichts gekauft.",
+  "token_history_paid_at": "Bezahlt am",
+  "token_history_period": "Zeitraum",
+  "token_history_amount": "Betrag",
+  "token_history_payment_status": "Status",
+  "token_history_payment_paid": "Bezahlt",
+  "token_history_payment_reverted": "Erstattet oder zurückgebucht am {date}",
   "token_history_unrecorded": "{count} Aufruf wurde verbraucht, bevor der Verlauf aufgezeichnet wurde, und hat hier keinen Eintrag. | {count} Aufrufe wurden verbraucht, bevor der Verlauf aufgezeichnet wurde, und haben hier keine Einträge."
 }
