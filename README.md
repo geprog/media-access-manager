@@ -162,6 +162,14 @@ docker run -d \
 `/app/data` holds the SQLite database and is the only writable path – mount a
 volume there or the data is gone with the container.
 
+The app learns its own public address from each request, honouring
+`X-Forwarded-Host` and `X-Forwarded-Proto`, so a deployment needs no URL
+configured and one image can serve any domain. That makes the reverse proxy in
+front of it responsible for those two headers: it must set them to the public
+host and scheme and overwrite whatever a client sent. They end up in the
+Mollie redirect and webhook URLs and in the admin link stored with each
+payment, which is why a client must not be able to choose them.
+
 `/app/branding` is empty and optional. It holds the logo and favicon of a
 white-label deployment, served at `/branding/*` and read on every request, which
 is what lets a published image be branded without a rebuild – mount the file and
