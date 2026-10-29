@@ -15,8 +15,21 @@
         icon="i-heroicons-arrow-right"
         size="lg"
         :loading="pendingPeriod !== null"
+        :disabled="canceling"
         :label="openPayment.status === 'open' ? $t('public_purchase_continue') : $t('public_purchase_details')"
         @click="purchase(openPayment.period)"
+      />
+      <!-- A bank transfer stays open for days. Where Mollie lets it be
+           canceled, the visitor need not wait them out to pay another way. -->
+      <UButton
+        v-if="openPayment.cancelable"
+        variant="link"
+        color="neutral"
+        icon="i-heroicons-x-mark"
+        :loading="canceling"
+        :disabled="pendingPeriod !== null"
+        :label="$t('public_purchase_cancel')"
+        @click="cancel"
       />
     </template>
     <p v-else class="text-sm text-muted">
@@ -40,7 +53,7 @@
       color="error"
       variant="subtle"
       icon="i-heroicons-exclamation-circle"
-      :title="$t('public_purchase_error')"
+      :title="failed === 'cancel' ? $t('public_purchase_cancel_error') : $t('public_purchase_error')"
     />
     <p class="text-xs text-muted">
       {{ $t('public_purchase_secure_hint') }}
@@ -68,6 +81,8 @@ export interface OpenPayment {
   status: 'open' | 'pending' | 'transfer'
   /** Whether Mollie's checkout still has something to show for it. */
   resumable: boolean
+  /** Whether Mollie lets it be canceled, so another payment can be started. */
+  cancelable: boolean
 }
 
 const props = defineProps<{
@@ -75,6 +90,9 @@ const props = defineProps<{
   options: PurchaseOption[]
   openPayment?: OpenPayment | null
 }>();
+
+/** The open payment was canceled: the page reloads its access to offer buying again. */
+const emit = defineEmits<{ canceled: [] }>();
 
 const { t, locale } = useI18n();
 
@@ -90,7 +108,8 @@ const openPaymentText = computed(() => {
       return t('public_purchase_processing');
   }
 });
-const failed = ref(false);
+const canceling = ref(false);
+const failed = ref<'purchase' | 'cancel' | null>(null);
 
 function optionLabel(option: PurchaseOption) {
   const price = formatPrice(option.amount, option.currency, locale.value);
@@ -106,7 +125,7 @@ function optionLabel(option: PurchaseOption) {
  */
 async function purchase(period: PurchaseOption['period']) {
   pendingPeriod.value = period;
-  failed.value = false;
+  failed.value = null;
   try {
     const { checkoutUrl } = await $fetch<{ checkoutUrl: string }>(
       `/api/purchase/${encodeURIComponent(props.token)}`,
@@ -115,8 +134,23 @@ async function purchase(period: PurchaseOption['period']) {
     await navigateTo(checkoutUrl, { external: true });
   }
   catch {
-    failed.value = true;
+    failed.value = 'purchase';
     pendingPeriod.value = null;
+  }
+}
+
+async function cancel() {
+  canceling.value = true;
+  failed.value = null;
+  try {
+    await $fetch(`/api/purchase/${encodeURIComponent(props.token)}/cancel`, { method: 'POST' });
+    emit('canceled');
+  }
+  catch {
+    failed.value = 'cancel';
+  }
+  finally {
+    canceling.value = false;
   }
 }
 </script>

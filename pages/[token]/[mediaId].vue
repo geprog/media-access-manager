@@ -28,6 +28,7 @@
       :group-id="denial?.groupId"
       :purchase-options="denial?.purchaseOptions"
       :open-payment="denial?.openPayment"
+      @canceled="execute"
     >
       <template #actions>
         <UButton variant="link" :to="groupLink" :label="$t('public_group_back')" />

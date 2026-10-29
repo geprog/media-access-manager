@@ -1,5 +1,5 @@
 /**
- * The two calls of Mollie's Payments API this app makes, over Nuxt's own
+ * The three calls of Mollie's Payments API this app makes, over Nuxt's own
  * `$fetch`. Mollie's SDK would add a legacy HTTP client for them and insists
  * on `https:`, which rules out the local stand-in the end-to-end tests use.
  *
@@ -23,6 +23,8 @@ export interface MolliePayment {
   method: string | null
   /** ISO 8601, when the payment was created. */
   createdAt: string
+  /** Whether Mollie lets the merchant cancel this payment right now. */
+  isCancelable?: boolean
   metadata: unknown
   _links: {
     checkout?: { href: string }
@@ -52,6 +54,9 @@ export function createMollieApi(options: { apiKey: string, apiEndpoint?: string 
       api<MolliePayment>('payments', { method: 'POST', body }),
     getPayment: (id: string) =>
       api<MolliePayment>(paymentPath(id)),
+    /** Only for a payment whose `isCancelable` is set; Mollie refuses the rest. */
+    cancelPayment: (id: string) =>
+      api<MolliePayment>(paymentPath(id), { method: 'DELETE' }),
   };
 }
 

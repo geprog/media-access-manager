@@ -70,6 +70,7 @@
       :token="token"
       :options="purchaseOptions ?? []"
       :open-payment="openPayment"
+      @canceled="emit('canceled')"
     />
   </div>
 </template>
@@ -102,6 +103,9 @@ const props = defineProps<{
   /** A payment the visitor started and has not finished, continued instead of buying again. */
   openPayment?: OpenPayment | null
 }>();
+
+/** The visitor canceled the payment they had started; the page reloads its access. */
+const emit = defineEmits<{ canceled: [] }>();
 
 const { t } = useI18n();
 

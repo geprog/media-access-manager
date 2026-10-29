@@ -148,6 +148,27 @@ test.describe('Buying access again', () => {
     expect(renewed?.usageLimit).toBeNull();
   });
 
+  test('a visitor who chose bank transfer can cancel it and pay another way', async ({ page }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.getByRole('button', { name: 'Bank transfer' }).click();
+
+    // Days may pass before the money arrives, so the page does not wait for
+    // it — and does not offer a second payment either.
+    await expect(page.getByText(/waiting for your bank transfer/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Show payment details' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /for €/ })).toHaveCount(0);
+
+    // Mollie lets a bank transfer be canceled until then, which is the way out.
+    await page.getByRole('button', { name: 'Cancel payment and pay another way' }).click();
+
+    await expect(page.getByRole('button', { name: '1 month for €9.00' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/waiting for your bank transfer/i)).toHaveCount(0);
+    await expect(page).toHaveURL(`/${token}`);
+  });
+
   test('a canceled payment offers the purchase again', async ({ page }, testInfo) => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     const { mediaId, token } = await visitExpiredPricedMedia(page, title);

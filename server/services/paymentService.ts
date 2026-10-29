@@ -78,6 +78,11 @@ export interface OpenPayment {
   status: 'open' | 'pending' | 'transfer'
   /** Whether Mollie's checkout still has something to show, e.g. a bank transfer's details. */
   resumable: boolean
+  /**
+   * Whether Mollie lets this payment be canceled, which a bank transfer is
+   * while the money has not arrived — the way out of waiting days for it.
+   */
+  cancelable: boolean
 }
 
 export interface PurchaseOffer {
@@ -127,10 +132,12 @@ async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata)
 }
 
 interface OpenPaymentState {
+  id: string
   status: PurchaseStatus
   period: PurchasePeriod
   checkoutUrl: string | null
   dashboardUrl: string | null
+  cancelable: boolean
   /** Started a few minutes ago at most: worth waiting for while it is processed. */
   recent: boolean
 }
@@ -157,12 +164,14 @@ async function refreshOpenPayment(mollie: MollieApi, tokenRow: Token): Promise<O
   // After a failed or canceled attempt Mollie's API no longer hands out the
   // checkout link, though the page still lets the visitor try again.
   const checkoutUrl = payment._links.checkout?.href
-    ?? (status === 'open' ? tokenRow.openPaymentCheckoutUrl : null);
+    ?? (status === 'open' || status === 'transfer' ? tokenRow.openPaymentCheckoutUrl : null);
   return {
+    id: payment.id,
     status,
     period: metadata.period,
     checkoutUrl,
     dashboardUrl: payment._links.dashboard?.href ?? null,
+    cancelable: !!payment.isCancelable,
     recent: isPaymentRecent(payment.createdAt),
   };
 }
@@ -197,7 +206,9 @@ export async function getPurchaseOffer(tokenRow: Token): Promise<PurchaseOffer> 
   const options = (await getPurchaseTarget(tokenRow))?.options ?? [];
   return {
     options,
-    openPayment: isOngoing(open) ? { period: open.period, status: open.status, resumable: !!open.checkoutUrl } : null,
+    openPayment: isOngoing(open)
+      ? { period: open.period, status: open.status, resumable: !!open.checkoutUrl, cancelable: open.cancelable }
+      : null,
   };
 }
 
@@ -284,6 +295,28 @@ export async function startPurchase(data: {
     return { checkoutUrl: winner };
   }
   return { checkoutUrl };
+}
+
+/** The token's payment cannot be canceled: there is none, or Mollie does not let this one. */
+export class PaymentNotCancelableError extends Error {}
+
+/**
+ * Cancels the payment the visitor started, where Mollie allows it — a bank
+ * transfer not yet made, above all — so they can pay another way instead of
+ * waiting days for it to expire. The token forgets it right away.
+ */
+export async function cancelOpenPayment(tokenValue: string): Promise<void> {
+  const mollie = useMollie();
+  const tokenRow = mollie ? await findTokenByValue(tokenValue) : null;
+  if (!mollie || !tokenRow) {
+    throw new PurchaseUnavailableError();
+  }
+  const open = await refreshOpenPayment(mollie, tokenRow);
+  if (!isOngoing(open) || !open.cancelable) {
+    throw new PaymentNotCancelableError();
+  }
+  await mollie.cancelPayment(open.id);
+  clearOpenPayment(tokenRow.id, open.id);
 }
 
 export interface TokenPaymentCheck {

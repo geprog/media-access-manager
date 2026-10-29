@@ -28,6 +28,7 @@
           :token="token"
           :options="purchaseOptions ?? []"
           :open-payment="openPayment"
+          @canceled="emit('canceled')"
         />
         <UButton
           v-if="requestAccessLink"
@@ -71,6 +72,9 @@ const props = defineProps<{
   /** A payment the visitor started and has not finished, continued instead of buying again. */
   openPayment?: OpenPayment | null
 }>();
+
+/** The visitor canceled the payment they had started; the page reloads its access. */
+const emit = defineEmits<{ canceled: [] }>();
 
 const { t } = useI18n();
 const { loggedIn } = useUserSession();

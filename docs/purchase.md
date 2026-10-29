@@ -119,6 +119,11 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
 - a bank transfer, `open` until the money arrives, shows "waiting for your
   bank transfer" and **Show payment details**, which is Mollie's page with the
   transfer data.
+- where Mollie reports the payment `isCancelable` — a bank transfer is, until
+  the money arrives — **Cancel payment and pay another way** cancels it through
+  Mollie's API and offers the purchase again, so nobody has to wait twelve
+  days for a transfer they changed their mind about. A fresh payment without
+  a method is not cancelable, and a payment being processed never is.
 - nothing sends the visitor to Mollie unasked: their "back" link would only
   bring them straight back again.
 
@@ -127,9 +132,8 @@ local setup, or a webhook lost — the token page asks Mollie about the payment
 whenever it loads, so expiry is noticed there as well; and a payment paid
 without the visitor coming back is applied the same way.
 
-An open payment cannot simply be canceled on the visitor's behalf: Mollie only
-lets a few methods be canceled through its API (a fresh payment without a
-method cannot), so its expiry is what ends it.
+Beyond the cancelable ones, an open payment cannot be ended on the visitor's
+behalf: Mollie's expiry is what ends it.
 
 ---
 
@@ -291,6 +295,7 @@ never a sum of the group's media.
 | `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                                                |
 | `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                                           |
 | `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status, wait, dashboardUrl }` (²) |
+| `POST`  | `/api/purchase/:token/cancel`  | public | cancels the token's open payment where Mollie allows it; `409` otherwise               |
 | `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                                                  |
 | `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                                            |
 | `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                                             |
@@ -298,7 +303,7 @@ never a sum of the group's media.
 
 `purchaseOptions` is `[{ period: 'month' | 'year', amount: 900, currency: 'EUR' }]`
 with `amount` in minor units; the page formats it with `Intl.NumberFormat`.
-Next to it, `openPayment` is `{ period, status: 'open' | 'pending' | 'transfer', resumable }`
+Next to it, `openPayment` is `{ period, status: 'open' | 'pending' | 'transfer', resumable, cancelable }`
 while the token has a payment Mollie still holds open, `null` otherwise.
 
 (¹) The checkout of the token's open payment while there is one; `409
@@ -318,13 +323,14 @@ server/
 ├── api/
 │   ├── purchase/[token].post.ts
 │   ├── purchase/[token]/confirm.post.ts
+│   ├── purchase/[token]/cancel.post.ts
 │   ├── media/[id].patch.ts
 │   └── payments/
 │       ├── settings.get.ts
 │       └── webhook.post.ts
-├── services/paymentService.ts   # create + confirm payments, apply them
+├── services/paymentService.ts   # create, confirm, cancel payments; apply them
 └── utils/
-    ├── mollieApi.ts             # the two Mollie REST calls, over $fetch
+    ├── mollieApi.ts             # the three Mollie REST calls, over $fetch
     ├── priceInput.ts            # validates admin price updates
     └── purchase.ts              # pure rules: options, extension, metadata
 utils/money.ts                   # minor units ⇄ Mollie amount string / input
@@ -340,7 +346,8 @@ Mollie's official SDK was tried first and dropped: it only accepts an
 `https:` endpoint, which rules out the local stand-in the E2E tests run
 against, and it brings a legacy HTTP client for what are two plain REST
 calls. `NUXT_MOLLIE_API_ENDPOINT` points the app at the stand-in; production
-leaves it empty.
+leaves it empty. The stand-in's checkout also offers "Bank transfer", which
+leaves the payment open and cancelable the way Mollie does.
 
 ---
 

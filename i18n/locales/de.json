@@ -225,6 +225,8 @@
   "public_purchase_transfer": "Wir warten auf Ihre Überweisung. Ihr Link funktioniert wieder, sobald das Geld eingegangen ist – das kann einige Tage dauern.",
   "public_purchase_continue": "Zahlung fortsetzen",
   "public_purchase_details": "Zahlungsdetails anzeigen",
+  "public_purchase_cancel": "Zahlung abbrechen und anders bezahlen",
+  "public_purchase_cancel_error": "Die Zahlung konnte nicht abgebrochen werden. Bitte versuchen Sie es später erneut.",
   "public_payment_pending": "Ihre Zahlung wird bearbeitet. Diese Seite aktualisiert sich, sobald sie bestätigt ist.",
   "public_payment_timeout": "Die Bestätigung Ihrer Zahlung dauert länger als üblich.",
   "public_payment_timeout_hint": "Sie müssen diese Seite nicht geöffnet lassen – Ihr Link funktioniert von selbst wieder, sobald die Zahlung bestätigt ist.",

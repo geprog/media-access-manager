@@ -30,6 +30,7 @@
         :group-id="denial?.groupId"
         :purchase-options="denial?.purchaseOptions"
         :open-payment="denial?.openPayment"
+        @canceled="execute"
       />
       <!-- A group token unlocks several media, so the visitor picks one instead
            of being dropped straight into a player. Nothing is spent here. -->
@@ -42,6 +43,7 @@
         :media="access.media"
         :purchase-options="access.purchaseOptions"
         :open-payment="access.openPayment"
+        @canceled="execute"
       />
       <!-- Watching would spend a limited view or start the access window, so the
            visitor is asked first instead of losing it to an accidental tap. -->

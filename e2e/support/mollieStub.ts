@@ -3,7 +3,7 @@
  * reaching Mollie. The app server talks to it through `NUXT_MOLLIE_API_ENDPOINT`;
  * the browser visits its `/checkout/:id` page instead of Mollie's hosted one.
  *
- * Covers only what the app uses: create and get a payment. `GET
+ * Covers only what the app uses: create, get and cancel a payment. `GET
  * /__payments` lets a test see what the app sent, e.g. the description, and
  * `POST /__payments/:id/:status` changes a payment the way Mollie would on its
  * own, e.g. `expired`.
@@ -25,6 +25,7 @@ interface StubPayment {
   status: string
   method: string | null
   amount: { currency: string, value: string }
+  isCancelable: boolean
   description: string
   redirectUrl: string
   webhookUrl?: string
@@ -70,6 +71,7 @@ createServer(async (request, response) => {
     payment.status = id;
     if (id !== 'open') {
       delete payment._links.checkout;
+      payment.isCancelable = false;
     }
     return send(response, 200, payment);
   }
@@ -88,6 +90,12 @@ createServer(async (request, response) => {
       else if (id === 'cancel') {
         payment.status = 'canceled';
       }
+      else if (id === 'transfer') {
+        // A bank transfer: open until the money arrives, days later, and
+        // cancelable by the merchant until then. The checkout keeps showing
+        // the transfer details.
+        Object.assign(payment, { method: 'banktransfer', isCancelable: true });
+      }
       else {
         // Like Mollie after a failed attempt: still open, but the API no longer
         // hands out the checkout link — the page itself keeps working.
@@ -102,6 +110,7 @@ createServer(async (request, response) => {
       <p>${payment.amount.value} ${payment.amount.currency}</p>
       <form method="post" action="/checkout/${payment.id}/pay"><button>Pay</button></form>
       <form method="post" action="/checkout/${payment.id}/cancel"><button>Cancel</button></form>
+      <form method="post" action="/checkout/${payment.id}/transfer"><button>Bank transfer</button></form>
       <form method="post" action="/checkout/${payment.id}/back"><button>Back</button></form>`);
   }
 
@@ -118,6 +127,7 @@ createServer(async (request, response) => {
       status: 'open',
       method: null,
       amount: body.amount,
+      isCancelable: false,
       description: body.description,
       redirectUrl: body.redirectUrl,
       webhookUrl: body.webhookUrl,
@@ -136,6 +146,15 @@ createServer(async (request, response) => {
   const payment = id ? payments.get(id) : undefined;
   if (!payment) {
     return notFound(response);
+  }
+  if (request.method === 'DELETE') {
+    // Mollie only cancels what it reported cancelable.
+    if (!payment.isCancelable) {
+      return send(response, 422, { status: 422, title: 'Unprocessable Entity', detail: 'This payment cannot be canceled.' });
+    }
+    Object.assign(payment, { status: 'canceled', isCancelable: false });
+    delete payment._links.checkout;
+    return send(response, 200, payment);
   }
   return send(response, 200, payment);
 }).listen(port, () => {

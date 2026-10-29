@@ -225,6 +225,8 @@
   "public_purchase_transfer": "We are waiting for your bank transfer. Your link works again as soon as the money has arrived – this can take a few days.",
   "public_purchase_continue": "Continue payment",
   "public_purchase_details": "Show payment details",
+  "public_purchase_cancel": "Cancel payment and pay another way",
+  "public_purchase_cancel_error": "The payment could not be canceled. Please try again later.",
   "public_payment_pending": "Your payment is being processed. This page updates as soon as it is confirmed.",
   "public_payment_timeout": "Your payment is taking longer than usual to be confirmed.",
   "public_payment_timeout_hint": "You do not need to keep this page open – your link starts working by itself as soon as the payment is confirmed.",
