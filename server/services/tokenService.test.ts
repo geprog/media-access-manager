@@ -275,11 +275,21 @@ describe('payments of a token', () => {
   it('remembers the payment a visitor started, so buying again leads back to it', async () => {
     const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
 
-    setOpenPayment(id, 'tr_started', 'https://checkout.example/started');
+    expect(setOpenPayment(id, 'tr_started', 'https://checkout.example/started')).toBe(true);
 
     const row = await findTokenByValue(token);
     expect(row?.openPaymentId).toBe('tr_started');
     expect(row?.openPaymentCheckoutUrl).toBe('https://checkout.example/started');
+  });
+
+  it('keeps the first of two payments started at the same moment', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    setOpenPayment(id, 'tr_first', 'https://checkout.example/first');
+
+    // The second request lost the race: it must lead to the first checkout,
+    // not replace it with one the first visitor tab never sees.
+    expect(setOpenPayment(id, 'tr_second', 'https://checkout.example/second')).toBe(false);
+    expect((await findTokenByValue(token))?.openPaymentId).toBe('tr_first');
   });
 
   it('forgets an open payment only once that very payment has ended', async () => {

@@ -216,8 +216,12 @@ belongs anyway.
   it is applied to. The return page names no payment at all, only the token,
   whose own open payment is looked up.
 - **One payment at a time.** While the token's payment is open, starting a
-  purchase returns that payment's checkout instead of creating another. A late
-  webhook for an older payment only clears the open payment if it is that one.
+  purchase returns that payment's checkout instead of creating another. Two
+  requests arriving together both create one, but only the first to write
+  `open_payment_id` (a conditional update) is remembered, and the other
+  request is answered with that checkout too; its own payment is shown to
+  nobody and expires at Mollie. A late webhook for an older payment only
+  clears the open payment if it is that one.
 - **Once per payment.** Inserting the `token_purchases` row and extending the
   token happen in one transaction; the primary key on `payment_id` turns a
   second webhook (Mollie retries) or a webhook racing the return page into a

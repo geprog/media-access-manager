@@ -264,7 +264,16 @@ export async function startPurchase(data: {
   if (!checkoutUrl) {
     throw new Error(`Mollie returned no checkout URL for payment ${payment.id}`);
   }
-  setOpenPayment(tokenRow.id, payment.id, checkoutUrl);
+  if (!setOpenPayment(tokenRow.id, payment.id, checkoutUrl)) {
+    // A second request for the same token got here first, e.g. from another
+    // tab. Both are led to its checkout; the payment created here is shown to
+    // nobody and expires at Mollie on its own.
+    const winner = (await findTokenById(tokenRow.id))?.openPaymentCheckoutUrl;
+    if (!winner) {
+      throw new Error(`Token ${tokenRow.id} lost its open payment while another was being started`);
+    }
+    return { checkoutUrl: winner };
+  }
   return { checkoutUrl };
 }
 

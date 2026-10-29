@@ -6,7 +6,7 @@ import type { TokenSettingsChanges } from '../utils/tokenSettings';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, isNull, lte, sql } from 'drizzle-orm';
 import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, media, mediaGroups, tokenMediaUsage, tokenPurchases, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
@@ -656,14 +656,18 @@ export function applyTokenPurchase(data: {
 
 /**
  * Remembers the payment a visitor just started for this token, so buying again
- * while it is open leads back to it instead of starting a second one.
+ * while it is open leads back to it instead of starting a second one. Only
+ * while the token has none: of two purchases started at the same moment, the
+ * first one remembered is the one both visitors are led to. `false` when
+ * another payment got there first.
  */
-export function setOpenPayment(tokenId: string, paymentId: string, checkoutUrl: string) {
-  useDb()
+export function setOpenPayment(tokenId: string, paymentId: string, checkoutUrl: string): boolean {
+  const { changes } = useDb()
     .update(tokens)
     .set({ openPaymentId: paymentId, openPaymentCheckoutUrl: checkoutUrl })
-    .where(eq(tokens.id, tokenId))
+    .where(and(eq(tokens.id, tokenId), isNull(tokens.openPaymentId)))
     .run();
+  return changes > 0;
 }
 
 /**
