@@ -4,6 +4,7 @@ import {
   classifyPaymentStatus,
   getPurchaseOptions,
   isPaymentRecent,
+  isPaymentReversed,
   isPurchasePeriod,
   parsePurchaseMetadata,
   purchaseExpiry,
@@ -48,6 +49,22 @@ describe('purchaseExpiry', () => {
   it('ends a year bought on a leap day on 28 February', () => {
     const leapDay = new Date('2028-02-29T12:00:00Z');
     expect(purchaseExpiry('year', leapDay)).toEqual(new Date('2029-02-28T12:00:00Z'));
+  });
+});
+
+describe('isPaymentReversed', () => {
+  const amount = { currency: 'EUR', value: '49.00' };
+
+  it('is false while the money stays', () => {
+    expect(isPaymentReversed({ amount })).toBe(false);
+    // A partial refund is a goodwill gesture, not a reversal.
+    expect(isPaymentReversed({ amount, amountRefunded: { value: '10.00' } })).toBe(false);
+  });
+
+  it('is true once the money went back in full, by refund, chargeback or both', () => {
+    expect(isPaymentReversed({ amount, amountRefunded: { value: '49.00' } })).toBe(true);
+    expect(isPaymentReversed({ amount, amountChargedBack: { value: '49.00' } })).toBe(true);
+    expect(isPaymentReversed({ amount, amountRefunded: { value: '20.00' }, amountChargedBack: { value: '29.00' } })).toBe(true);
   });
 });
 

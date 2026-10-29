@@ -605,7 +605,8 @@ export type PurchaseApplication = 'applied' | 'already_applied' | 'token_missing
  * ran out. What was bought is time, so the view limit goes: a paid month that
  * closed after three views would be a broken promise. Per-media counts of a
  * group token stay, since those views did happen — they just no longer limit
- * anything.
+ * anything. What the token was before is kept with the purchase, so a refund
+ * or chargeback can put it back.
  *
  * Runs as one synchronous transaction, so a retried webhook racing the return
  * page finds the other's row and leaves the token alone.
@@ -637,6 +638,7 @@ export function applyTokenPurchase(data: {
       tokenId: tokenRow.id,
       period: data.period,
       expiresBefore: tokenRow.expiresAt,
+      usageLimitBefore: tokenRow.usageLimit,
       expiresAfter,
       createdAt: now,
     }).run();
@@ -651,6 +653,37 @@ export function applyTokenPurchase(data: {
       .where(eq(tokens.id, tokenRow.id))
       .run();
     return 'applied';
+  });
+}
+
+export type PurchaseReversal = 'reverted' | 'superseded' | 'already_reverted' | 'unknown';
+
+/**
+ * Takes a purchase back once its money went back: the token returns to the end
+ * and view limit it had before — unless something moved its end since, a later
+ * purchase or an admin, in which case that stands (`superseded`). Either way
+ * the purchase is marked, so a repeated webhook changes nothing more.
+ */
+export function revertTokenPurchase(paymentId: string, now: Date = new Date()): PurchaseReversal {
+  const db = useDb();
+  return db.transaction((tx) => {
+    const purchase = tx.select().from(tokenPurchases).where(eq(tokenPurchases.paymentId, paymentId)).all()[0];
+    if (!purchase) {
+      return 'unknown';
+    }
+    if (purchase.revertedAt) {
+      return 'already_reverted';
+    }
+    tx.update(tokenPurchases).set({ revertedAt: now }).where(eq(tokenPurchases.paymentId, paymentId)).run();
+    const tokenRow = tx.select().from(tokens).where(eq(tokens.id, purchase.tokenId)).all()[0];
+    if (!tokenRow || tokenRow.expiresAt?.getTime() !== purchase.expiresAfter.getTime()) {
+      return 'superseded';
+    }
+    tx.update(tokens)
+      .set({ expiresAt: purchase.expiresBefore, usageLimit: purchase.usageLimitBefore })
+      .where(eq(tokens.id, tokenRow.id))
+      .run();
+    return 'reverted';
   });
 }
 

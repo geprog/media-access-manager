@@ -14,6 +14,12 @@ const MOLLIE_API = 'https://api.mollie.com/v2/';
  */
 const MOLLIE_TIMEOUT_MS = 10_000;
 
+export interface MollieAmount {
+  currency: string
+  /** A decimal string such as `"9.00"`. */
+  value: string
+}
+
 /** As much of a Mollie payment as this app reads. */
 export interface MolliePayment {
   id: string
@@ -21,10 +27,15 @@ export interface MolliePayment {
   status: string
   /** `null` until the customer picked one on the checkout. */
   method: string | null
+  amount: MollieAmount
+  /** Only present once something was refunded or charged back. */
+  amountRefunded?: MollieAmount
+  amountChargedBack?: MollieAmount
   /** ISO 8601, when the payment was created. */
   createdAt: string
   /** Whether Mollie lets the merchant cancel this payment right now. */
   isCancelable?: boolean
+  description: string
   metadata: unknown
   _links: {
     checkout?: { href: string }
@@ -34,7 +45,7 @@ export interface MolliePayment {
 }
 
 export interface CreatePaymentBody {
-  amount: { currency: string, value: string }
+  amount: MollieAmount
   description: string
   redirectUrl: string
   webhookUrl?: string

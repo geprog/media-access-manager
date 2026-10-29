@@ -8,17 +8,20 @@ import {
   classifyPaymentStatus,
   getPurchaseOptions,
   isPaymentRecent,
+  isPaymentReversed,
   parsePurchaseMetadata,
   toMollieLocale,
 } from '../utils/purchase';
 import { getMediaGroupById } from './mediaGroupService';
 import { getMediaById } from './mediaService';
+import { recordPaymentNotice } from './paymentNoticeService';
 import {
   applyTokenPurchase,
   clearOpenPayment,
   findTokenById,
   findTokenByValue,
   isTokenRenewable,
+  revertTokenPurchase,
   setOpenPayment,
 } from './tokenService';
 
@@ -108,8 +111,9 @@ async function fetchPayment(mollie: MollieApi, paymentId: string): Promise<Molli
 
 /**
  * Brings the token in line with what Mollie says about one of its payments:
- * a paid one extends it, one that ended without money is no longer open.
- * `null` when the payment names a token that is gone.
+ * a paid one extends it, one that ended without money is no longer open, and
+ * one whose money went back again is taken back. `null` when the payment
+ * names a token that is gone.
  */
 async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata): Promise<PurchaseStatus | null> {
   const status = classifyPaymentStatus(payment.status, payment.method ?? null);
@@ -119,16 +123,31 @@ async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata)
   if (status !== 'paid') {
     return status;
   }
+  if (isPaymentReversed(payment)) {
+    // Mollie keeps a refunded or charged back payment `paid` and calls the
+    // same webhook; a purchase it never applied stays unapplied.
+    if (revertTokenPurchase(payment.id) === 'reverted') {
+      recordPaymentNotice({ paymentId: payment.id, kind: 'reverted', ...noticeDetails(payment) });
+    }
+    return 'reversed';
+  }
   // The id and the value together: a token deleted and a new one issued with
   // the same value (practically impossible, but cheap to rule out) must not
   // inherit someone else's purchase.
   const tokenRow = await findTokenById(metadata.tokenId);
   if (!tokenRow || tokenRow.token !== metadata.token) {
+    // The visitor paid for nothing; the refund is done in Mollie, so the
+    // admin is shown the way there.
     console.error(`Paid payment ${payment.id} refers to token ${metadata.tokenId}, which no longer exists.`);
+    recordPaymentNotice({ paymentId: payment.id, kind: 'unapplied', ...noticeDetails(payment) });
     return null;
   }
   applyTokenPurchase({ tokenId: tokenRow.id, paymentId: payment.id, period: metadata.period });
   return 'paid';
+}
+
+function noticeDetails(payment: MolliePayment) {
+  return { description: payment.description, dashboardUrl: payment._links.dashboard?.href ?? null };
 }
 
 interface OpenPaymentState {

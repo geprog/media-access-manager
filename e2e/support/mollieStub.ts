@@ -6,7 +6,8 @@
  * Covers only what the app uses: create, get and cancel a payment. `GET
  * /__payments` lets a test see what the app sent, e.g. the description, and
  * `POST /__payments/:id/:status` changes a payment the way Mollie would on its
- * own, e.g. `expired`.
+ * own, e.g. `expired` — or `chargeback` and `refund`, which keep it `paid`
+ * and raise the returned amount, as Mollie does.
  *
  * Run directly with Node, which strips the types: `node e2e/support/mollieStub.ts`.
  */
@@ -25,6 +26,8 @@ interface StubPayment {
   status: string
   method: string | null
   amount: { currency: string, value: string }
+  amountRefunded?: { currency: string, value: string }
+  amountChargedBack?: { currency: string, value: string }
   isCancelable: boolean
   description: string
   redirectUrl: string
@@ -67,6 +70,10 @@ createServer(async (request, response) => {
     const payment = payments.get(second);
     if (!payment) {
       return notFound(response);
+    }
+    if (id === 'chargeback' || id === 'refund') {
+      payment[id === 'chargeback' ? 'amountChargedBack' : 'amountRefunded'] = { ...payment.amount };
+      return send(response, 200, payment);
     }
     payment.status = id;
     if (id !== 'open') {

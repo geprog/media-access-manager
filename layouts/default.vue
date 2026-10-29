@@ -33,6 +33,8 @@
       </template>
     </UNavigationMenu>
     <main class="flex-1 p-4">
+      <!-- Only admins have a session; visitors on a token page never ask. -->
+      <PaymentNoticesBanner v-if="loggedIn" />
       <slot />
     </main>
     <AppFooter />

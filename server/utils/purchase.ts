@@ -1,3 +1,5 @@
+import { toMinorUnits } from '../../utils/money';
+
 /** How long a purchase extends a token for. */
 export const PURCHASE_PERIODS = ['month', 'year'] as const;
 export type PurchasePeriod = typeof PURCHASE_PERIODS[number];
@@ -131,9 +133,10 @@ export function toMollieLocale(locale: string): string | undefined {
  * Mollie's statuses as far as a visitor is concerned: the money arrived, it is
  * being processed and arrives in a moment (`pending`), a bank transfer is on
  * its way and takes days (`transfer`), the checkout was left without paying
- * (`open`), or this payment is over without it.
+ * (`open`), this payment is over without it (`failed`), or the money went back
+ * again after it was paid (`reversed`).
  */
-export type PurchaseStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed';
+export type PurchaseStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed' | 'reversed';
 
 /**
  * `open` is what a visitor coming back from Mollie's "back" link brings: the
@@ -148,6 +151,28 @@ export function classifyPaymentStatus(status: string, method: string | null): Pu
     return method === 'banktransfer' ? 'transfer' : 'open';
   }
   return ['pending', 'authorized'].includes(status) ? 'pending' : 'failed';
+}
+
+/** The parts of a Mollie payment that say whether its money went back. */
+export interface ReversiblePayment {
+  amount: { value: string, currency: string }
+  amountRefunded?: { value: string }
+  amountChargedBack?: { value: string }
+}
+
+/**
+ * Whether the payment was undone in full — refunded by the admin, charged back
+ * by the payer's bank, or both together. Mollie keeps such a payment `paid`
+ * and only raises these amounts, so this is what the webhook has to look at.
+ * A partial refund keeps the access: that is a goodwill gesture, not a
+ * reversal.
+ */
+export function isPaymentReversed(payment: ReversiblePayment): boolean {
+  const { currency } = payment.amount;
+  const paid = toMinorUnits(Number(payment.amount.value), currency);
+  const returned = toMinorUnits(Number(payment.amountRefunded?.value ?? 0), currency)
+    + toMinorUnits(Number(payment.amountChargedBack?.value ?? 0), currency);
+  return paid > 0 && returned >= paid;
 }
 
 /**

@@ -148,10 +148,33 @@ export const tokenPurchases = sqliteTable('token_purchases', {
   paymentId: text('payment_id').primaryKey(),
   tokenId: text('token_id').notNull().references(() => tokens.id),
   period: text('period', { enum: ['month', 'year'] }).notNull(),
-  /** The token's end before the purchase, so an extension can be undone. */
+  /**
+   * The token's end and view limit before the purchase, so the extension can
+   * be undone when the money goes back — a refund or a chargeback.
+   */
   expiresBefore: integer('expires_before', { mode: 'timestamp' }),
+  usageLimitBefore: integer('usage_limit_before'),
   expiresAfter: integer('expires_after', { mode: 'timestamp' }).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  /** When the money went back and the token was set back to what it was. */
+  revertedAt: integer('reverted_at', { mode: 'timestamp' }),
+});
+
+/**
+ * Payments that need an admin's eye: one that was paid after its token was
+ * deleted and so bought nothing (to be refunded in Mollie), and one that was
+ * refunded or charged back, whose access the app withdrew. Shown in the admin
+ * UI until dismissed. Holds the payment's description and its Mollie link,
+ * nothing about the payer.
+ */
+export const paymentNotices = sqliteTable('payment_notices', {
+  paymentId: text('payment_id').primaryKey(),
+  kind: text('kind', { enum: ['unapplied', 'reverted'] }).notNull(),
+  /** What the payment was for, as Mollie's checkout showed it. */
+  description: text('description').notNull(),
+  dashboardUrl: text('dashboard_url'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  dismissedAt: integer('dismissed_at', { mode: 'timestamp' }),
 });
 
 export type Media = typeof media.$inferSelect;
@@ -164,4 +187,5 @@ export type Token = typeof tokens.$inferSelect;
 export type TokenInsert = typeof tokens.$inferInsert;
 export type TokenMediaUsage = typeof tokenMediaUsage.$inferSelect;
 export type TokenPurchase = typeof tokenPurchases.$inferSelect;
+export type PaymentNotice = typeof paymentNotices.$inferSelect;
 export type TokenView = typeof tokenViews.$inferSelect;

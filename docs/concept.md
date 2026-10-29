@@ -390,7 +390,8 @@ media-access-manager/
 | `batches`           | id, media_id (nullable), group_id (nullable), name, created_at                                                                                 |
 | `token_media_usage` | token_id, media_id, usage_count (PK: token_id + media_id)                                                                                      |
 | `token_views`       | id, token_id, media_id, viewed_at (indexed by token_id and by viewed_at)                                                                       |
-| `token_purchases`   | payment_id (PK), token_id, period, expires_before, expires_after, created_at                                                                   |
+| `token_purchases`   | payment_id (PK), token_id, period, expires_before, usage_limit_before, expires_after, created_at, reverted_at                                  |
+| `payment_notices`   | payment_id (PK), kind, description, dashboard_url, created_at, dismissed_at                                                                    |
 
 `media` and `media_groups` also carry `price_month` and `price_year` (minor
 units, nullable) for buying access again — see [purchase.md](./purchase.md).

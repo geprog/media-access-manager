@@ -19,6 +19,7 @@
     "apos",
     "autoincrement",
     "banktransfer",
+    "chargeback",
     "chargebacks",
     "creditcard",
     "culori",

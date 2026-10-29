@@ -31,6 +31,7 @@ const {
   listRecentViews,
   listTokensByBatchId,
   listViewsBetween,
+  revertTokenPurchase,
   setOpenPayment,
   validateAndConsumeToken,
 } = await import('./tokenService');
@@ -54,7 +55,7 @@ async function someMedia(title = `Video ${++counter}`) {
 }
 
 beforeEach(() => {
-  for (const table of ['token_purchases', 'token_views', 'token_media_usage', 'tokens', 'batches', 'media_group_items', 'media_groups', 'media']) {
+  for (const table of ['payment_notices', 'token_purchases', 'token_views', 'token_media_usage', 'tokens', 'batches', 'media_group_items', 'media_groups', 'media']) {
     sqlite.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -340,5 +341,40 @@ describe('payments of a token', () => {
 
     // A month's price buys a month of unlimited views, not three years of them.
     expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2026-04-15T12:00:00Z'));
+  });
+
+  it('puts the token back to what it was once the money went back', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'charged back',
+      usageLimit: 3,
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    const now = new Date('2026-03-15T12:00:00Z');
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_reversed', period: 'year', now });
+
+    expect(revertTokenPurchase('tr_reversed', now)).toBe('reverted');
+    const reverted = await findTokenByValue(token);
+    expect(reverted?.expiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
+    expect(reverted?.usageLimit).toBe(3);
+
+    // Mollie retries its webhook; the second call must change nothing more.
+    expect(revertTokenPurchase('tr_reversed', now)).toBe('already_reverted');
+    expect(revertTokenPurchase('tr_unknown', now)).toBe('unknown');
+  });
+
+  it('leaves a token alone whose end moved on since the purchase', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'renewed twice',
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_old', period: 'month', now: new Date('2026-03-15T12:00:00Z') });
+    // The month ran out and the visitor bought a year; then the month's money
+    // went back. The year stands: it was paid for separately.
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_new', period: 'year', now: new Date('2026-05-01T12:00:00Z') });
+
+    expect(revertTokenPurchase('tr_old')).toBe('superseded');
+    expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2027-05-01T12:00:00Z'));
   });
 });

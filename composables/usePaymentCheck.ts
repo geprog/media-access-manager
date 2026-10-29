@@ -25,7 +25,7 @@ export type PaymentCheckState = 'idle' | 'checking' | 'pending' | 'failed' | 'ti
  */
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 40;
-type PaymentStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed';
+type PaymentStatus = 'paid' | 'pending' | 'transfer' | 'open' | 'failed' | 'reversed';
 
 interface PaymentCheck {
   /** `null` when no payment is in progress, e.g. none was started or the webhook already applied it. */

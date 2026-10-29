@@ -207,6 +207,60 @@ test.describe('Buying access again', () => {
     expect((await fetchTokenRow(page, mediaId, token))?.expiresAt).toBe(renewed?.expiresAt);
   });
 
+  test('a chargeback takes the bought access back and tells the admin', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+    expect((await readToken(page, mediaId, token))?.usageLimit).toBeNull();
+
+    // The payer's bank took the money back. Mollie keeps the payment paid and
+    // calls the webhook again, with the charged back amount on the payment.
+    expect((await setStubPaymentStatus(request, paymentId, 'chargeback')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+
+    const reverted = await fetchTokenRow(page, mediaId, token);
+    expect(new Date(reverted?.expiresAt ?? 0).getTime()).toBeLessThan(Date.now());
+    expect(reverted?.usageLimit).toBe(3);
+
+    await page.goto('/');
+    const notice = page.getByRole('alert').filter({ hasText: `${title} – 1 month access` });
+    await expect(notice).toContainText(/refunded or charged back/i);
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(notice).toHaveCount(0);
+    await page.reload();
+    await expect(notice).toHaveCount(0);
+  });
+
+  test('a payment completed after its link was deleted is shown to the admin', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+
+    // The admin deletes the media, and its tokens with it, while the visitor
+    // is still at the checkout.
+    await login(page);
+    await page.evaluate(id => fetch(`/api/media/${id}`, { method: 'DELETE' }), mediaId);
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+
+    // Nothing to extend: the admin is told, with the way to the refund.
+    await page.goto('/');
+    const notice = page.getByRole('alert').filter({ hasText: `${title} – 1 year access` });
+    await expect(notice).toContainText(/no longer exists/i);
+    await expect(notice.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', new RegExp(`/dashboard/payments/${paymentId}$`));
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(notice).toHaveCount(0);
+  });
+
   test('a canceled payment offers the purchase again', async ({ page }, testInfo) => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     const { mediaId, token } = await visitExpiredPricedMedia(page, title);

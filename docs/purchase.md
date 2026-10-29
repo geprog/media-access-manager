@@ -154,6 +154,22 @@ new QR code — the one on their printout keeps working.
   because they record views that really happened.
 - `starts_at`, `name`, `batch_id` stay as they are.
 
+### When the money goes back
+
+A refund (the admin's doing, in the Mollie dashboard) or a chargeback (the
+payer's bank's doing) keeps the payment `paid` at Mollie; only its
+`amountRefunded` / `amountChargedBack` grow, and Mollie calls the same
+webhook. Once the two together cover the full amount, the purchase is taken
+back: the token returns to the `expires_at` and `usage_limit` it had before,
+which the purchase row remembers, and the row is marked `reverted_at` so a
+repeated call changes nothing more. A partial refund keeps the access — that
+is a goodwill gesture, not a reversal.
+
+Only a purchase whose extension still stands is undone. If the token's end
+moved since — the visitor bought again after that period ran out, or an admin
+edited the token — the later state wins, and the purchase is merely marked.
+The admin is told either way (see §4).
+
 The token is a single row that a batch owns, so extending one visitor's token
 never touches the others of that batch.
 
@@ -170,14 +186,23 @@ never touches the others of that batch.
 
 The app keeps one row per **paid** payment in `token_purchases`:
 
-| Column            | Why                                                                |
-| ----------------- | ------------------------------------------------------------------ |
-| `payment_id` (PK) | the only thing that stops a repeated webhook extending twice       |
-| `token_id`        | which token was extended                                           |
-| `period`          | `month` or `year`                                                  |
-| `expires_before`  | the token's end before the purchase, so an extension can be undone |
-| `expires_after`   | and after it                                                       |
-| `created_at`      | when                                                               |
+| Column               | Why                                                                   |
+| -------------------- | --------------------------------------------------------------------- |
+| `payment_id` (PK)    | the only thing that stops a repeated webhook extending twice          |
+| `token_id`           | which token was extended                                              |
+| `period`             | `month` or `year`                                                     |
+| `expires_before`     | the token's end before the purchase, so an extension can be undone    |
+| `usage_limit_before` | and its view limit, for the same reason                               |
+| `expires_after`      | the end it got                                                        |
+| `created_at`         | when                                                                  |
+| `reverted_at`        | when the money went back and the token was set back, `null` otherwise |
+
+And one row per payment an admin should look at, in `payment_notices`: a paid
+payment whose token was deleted meanwhile (`unapplied`, to be refunded in
+Mollie) and one whose money went back (`reverted`). It holds the payment id,
+the kind, the payment's description — "{title} – 1 year access", the same
+line the checkout showed — and the Mollie dashboard link, until the admin
+dismisses it. Nothing about the payer.
 
 While a payment is open, `tokens.open_payment_id` holds its id and
 `tokens.open_payment_checkout_url` the checkout Mollie returned when creating
@@ -233,6 +258,10 @@ belongs anyway.
   request is answered with that checkout too; its own payment is shown to
   nobody and expires at Mollie. A late webhook for an older payment only
   clears the open payment if it is that one.
+- **Money back, access back.** A refund or chargeback covering the full amount
+  reverts the purchase (§2), and the admin sees it in the UI until dismissed —
+  as they see a payment that was paid after its token had been deleted, which
+  is theirs to refund in Mollie.
 - **Once per payment.** Inserting the `token_purchases` row and extending the
   token happen in one transaction; the primary key on `payment_id` turns a
   second webhook (Mollie retries) or a webhook racing the return page into a
@@ -289,17 +318,19 @@ never a sum of the group's media.
 
 ## 6. Endpoints
 
-| Method  | Path                           | Auth   | Purpose                                                                                |
-| ------- | ------------------------------ | ------ | -------------------------------------------------------------------------------------- |
-| `GET`   | `/api/access/:token`           | public | now also returns `purchaseOptions` when expired                                        |
-| `GET`   | `/api/access/:token/:mediaId`  | public | the same for a blocked media of a group                                                |
-| `POST`  | `/api/purchase/:token`         | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                                           |
-| `POST`  | `/api/purchase/:token/confirm` | public | confirms (and applies) the token's open payment → `{ status, wait, dashboardUrl }` (²) |
-| `POST`  | `/api/purchase/:token/cancel`  | public | cancels the token's open payment where Mollie allows it; `409` otherwise               |
-| `POST`  | `/api/payments/webhook`        | public | Mollie status updates                                                                  |
-| `PATCH` | `/api/media/:id`               | admin  | `{ priceMonth, priceYear }`                                                            |
-| `PATCH` | `/api/groups/:id`              | admin  | now also accepts `priceMonth`, `priceYear`                                             |
-| `GET`   | `/api/payments/settings`       | admin  | `{ enabled }` for the admin hint                                                       |
+| Method  | Path                                | Auth   | Purpose                                                                                |
+| ------- | ----------------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `GET`   | `/api/access/:token`                | public | now also returns `purchaseOptions` when expired                                        |
+| `GET`   | `/api/access/:token/:mediaId`       | public | the same for a blocked media of a group                                                |
+| `POST`  | `/api/purchase/:token`              | public | `{ period, locale }` → `{ checkoutUrl }` (¹)                                           |
+| `POST`  | `/api/purchase/:token/confirm`      | public | confirms (and applies) the token's open payment → `{ status, wait, dashboardUrl }` (²) |
+| `POST`  | `/api/purchase/:token/cancel`       | public | cancels the token's open payment where Mollie allows it; `409` otherwise               |
+| `POST`  | `/api/payments/webhook`             | public | Mollie status updates, refunds and chargebacks included                                |
+| `GET`   | `/api/payments/notices`             | admin  | payments to look at, until dismissed                                                   |
+| `POST`  | `/api/payments/notices/:id/dismiss` | admin  | done looking                                                                           |
+| `PATCH` | `/api/media/:id`                    | admin  | `{ priceMonth, priceYear }`                                                            |
+| `PATCH` | `/api/groups/:id`                   | admin  | now also accepts `priceMonth`, `priceYear`                                             |
+| `GET`   | `/api/payments/settings`            | admin  | `{ enabled }` for the admin hint                                                       |
 
 `purchaseOptions` is `[{ period: 'month' | 'year', amount: 900, currency: 'EUR' }]`
 with `amount` in minor units; the page formats it with `Intl.NumberFormat`.
@@ -327,14 +358,19 @@ server/
 │   ├── media/[id].patch.ts
 │   └── payments/
 │       ├── settings.get.ts
-│       └── webhook.post.ts
-├── services/paymentService.ts   # create, confirm, cancel payments; apply them
+│       ├── webhook.post.ts
+│       ├── notices.get.ts
+│       └── notices/[id]/dismiss.post.ts
+├── services/
+│   ├── paymentService.ts        # create, confirm, cancel payments; apply and revert them
+│   └── paymentNoticeService.ts  # what the admin is shown until dismissed
 └── utils/
     ├── mollieApi.ts             # the three Mollie REST calls, over $fetch
     ├── priceInput.ts            # validates admin price updates
     └── purchase.ts              # pure rules: options, extension, metadata
 utils/money.ts                   # minor units ⇄ Mollie amount string / input
 components/
+├── PaymentNoticesBanner.vue     # admin: payments to look at, on every admin page
 ├── PublicPaymentNotice.vue      # late or failed payment, admin link to Mollie
 ├── PublicPurchaseOptions.vue    # buttons on the expired page and group list
 └── PurchasePricesCard.vue       # admin price editor, media + group page
@@ -347,7 +383,8 @@ Mollie's official SDK was tried first and dropped: it only accepts an
 against, and it brings a legacy HTTP client for what are two plain REST
 calls. `NUXT_MOLLIE_API_ENDPOINT` points the app at the stand-in; production
 leaves it empty. The stand-in's checkout also offers "Bank transfer", which
-leaves the payment open and cancelable the way Mollie does.
+leaves the payment open and cancelable the way Mollie does, and
+`POST /__payments/:id/chargeback` raises the charged back amount.
 
 ---
 
@@ -414,11 +451,10 @@ that is what the visitor agreed to on the checkout page.
 
 **Deleting a token, media or group** removes its `token_purchases` rows first,
 as it already does with usage counters. A paid payment whose token is gone by
-the time the webhook arrives is logged and ignored — the refund is done in
-Mollie, where the money is.
+the time the webhook arrives buys nothing; the admin is shown it, with the
+link into Mollie, where the refund is done and the money is.
 
-**Out of scope for now**, all addable without changing the model: refunds and
-chargebacks shortening access again, VAT invoices (Mollie or a separate tool),
-showing a token's purchase history in the admin list, and recurring
-subscriptions via Mollie mandates (would need a customer id, which is personal
-data).
+**Out of scope for now**, all addable without changing the model: VAT invoices
+(Mollie or a separate tool), showing a token's purchase history in the admin
+list, and recurring subscriptions via Mollie mandates (would need a customer
+id, which is personal data).
