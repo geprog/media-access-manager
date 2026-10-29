@@ -56,15 +56,33 @@ function setStubPaymentStatus(request: APIRequestContext, paymentId: string | un
   return request.post(new URL(`../__payments/${paymentId}/${status}`, process.env.NUXT_MOLLIE_API_ENDPOINT).href);
 }
 
+/** What Mollie posts when a payment changes: nothing but the id, form-encoded. */
+function postWebhook(request: APIRequestContext, paymentId: string) {
+  return request.post('/api/payments/webhook', { form: { id: paymentId } });
+}
+
 interface TokenRow { token: string, expiresAt: string | null, usageLimit: number | null }
 
-async function readToken(page: Page, mediaId: string, token: string): Promise<TokenRow | undefined> {
-  await login(page);
+/** The token as the admin API lists it; the page must hold an admin session. */
+async function fetchTokenRow(page: Page, mediaId: string, token: string): Promise<TokenRow | undefined> {
   const rows = await page.evaluate(async (id) => {
     const response = await fetch(`/api/tokens?mediaId=${id}`);
     return response.json() as Promise<TokenRow[]>;
   }, mediaId);
   return rows.find(row => row.token === token);
+}
+
+async function readToken(page: Page, mediaId: string, token: string): Promise<TokenRow | undefined> {
+  await login(page);
+  return fetchTokenRow(page, mediaId, token);
+}
+
+const A_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
+function expectAboutAYearAhead(row: TokenRow | undefined) {
+  const expiresAt = new Date(row?.expiresAt ?? 0).getTime();
+  expect(Math.abs(expiresAt - (Date.now() + A_YEAR_MS))).toBeLessThan(TWO_DAYS_MS);
 }
 
 /** Media with prices and an expired token, seen by a visitor without admin session. */
@@ -132,7 +150,6 @@ test.describe('Buying access again', () => {
     await page.getByRole('button', { name: 'Pay' }).click();
 
     await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
-    // The return marker is dropped from the address once the payment is confirmed.
     await expect(page).toHaveURL(`/${token}`);
     // Mollie is told nothing but the token page to come back to.
     const sent: Array<{ redirectUrl: string }> = await (await request.get(
@@ -142,9 +159,7 @@ test.describe('Buying access again', () => {
 
     // The token itself was renewed: a year from now, and no view limit.
     const renewed = await readToken(page, mediaId, token);
-    const expiresAt = new Date(renewed?.expiresAt ?? 0).getTime();
-    const inAYear = Date.now() + 365 * 24 * 60 * 60 * 1000;
-    expect(Math.abs(expiresAt - inAYear)).toBeLessThan(2 * 24 * 60 * 60 * 1000);
+    expectAboutAYearAhead(renewed);
     expect(renewed?.usageLimit).toBeNull();
   });
 
@@ -167,6 +182,29 @@ test.describe('Buying access again', () => {
     await expect(page.getByRole('button', { name: '1 month for €9.00' })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/waiting for your bank transfer/i)).toHaveCount(0);
     await expect(page).toHaveURL(`/${token}`);
+  });
+
+  test('Mollie\'s webhook extends the token once, however often it calls', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+    // Paid at Mollie, and only Mollie's call tells the app so far.
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+
+    const renewed = await readToken(page, mediaId, token);
+    expectAboutAYearAhead(renewed);
+    expect(renewed?.usageLimit).toBeNull();
+
+    // Mollie retries its call; an id it does not know gets the same answer and
+    // changes nothing either.
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+    expect((await postWebhook(request, 'tr_unknown')).status()).toBe(200);
+    expect((await fetchTokenRow(page, mediaId, token))?.expiresAt).toBe(renewed?.expiresAt);
   });
 
   test('a canceled payment offers the purchase again', async ({ page }, testInfo) => {
