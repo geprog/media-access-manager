@@ -8,6 +8,12 @@
 
 const MOLLIE_API = 'https://api.mollie.com/v2/';
 
+/**
+ * Mollie answers in well under a second. The token page asks about an open
+ * payment on every load, so a hanging connection must not hang the page.
+ */
+const MOLLIE_TIMEOUT_MS = 10_000;
+
 /** As much of a Mollie payment as this app reads. */
 export interface MolliePayment {
   id: string
@@ -36,6 +42,7 @@ export function createMollieApi(options: { apiKey: string, apiEndpoint?: string 
   const api = $fetch.create({
     baseURL: options.apiEndpoint || MOLLIE_API,
     headers: { Authorization: `Bearer ${options.apiKey}` },
+    timeout: MOLLIE_TIMEOUT_MS,
   });
   const paymentPath = (id: string) => `payments/${encodeURIComponent(id)}`;
   return {

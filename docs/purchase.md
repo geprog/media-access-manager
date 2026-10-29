@@ -224,6 +224,9 @@ belongs anyway.
   from the media/group row at the time the payment is created.
 - The webhook always answers `200`, also for unknown ids, so it tells a prober
   nothing.
+- Mollie is given ten seconds per call. The token page asks about an open
+  payment on every load, and a hanging connection to Mollie must not hang the
+  page: the page treats the error as "nothing to wait for" and loads.
 - The purchase endpoints live under `/api/purchase/`, which joins
   `/api/access/` and `/api/payments/webhook` on the list of public paths. They
   are not nested under `/api/access/:token/` because Nitro's typed routes would
