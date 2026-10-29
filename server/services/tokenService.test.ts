@@ -18,6 +18,8 @@ vi.mock('../utils/db', () => ({
 }));
 
 const {
+  applyTokenPurchase,
+  clearOpenPayment,
   consumeGroupMediaView,
   createBatch,
   createToken,
@@ -25,10 +27,12 @@ const {
   deleteToken,
   findBatchById,
   findTokenByValue,
-  getTokenViewHistory,
+  getTokenHistory,
   listRecentViews,
   listTokensByBatchId,
   listViewsBetween,
+  revertTokenPurchase,
+  setOpenPayment,
   validateAndConsumeToken,
 } = await import('./tokenService');
 const { createMedia, deleteMedia } = await import('./mediaService');
@@ -50,8 +54,11 @@ async function someMedia(title = `Video ${++counter}`) {
   return id;
 }
 
+/** What every purchase here was paid with; the history test looks at its own. */
+const paid = { amount: 900, currency: 'EUR', dashboardUrl: null };
+
 beforeEach(() => {
-  for (const table of ['token_views', 'token_media_usage', 'tokens', 'batches', 'media_group_items', 'media_groups', 'media']) {
+  for (const table of ['payment_notices', 'token_purchases', 'token_views', 'token_media_usage', 'tokens', 'batches', 'media_group_items', 'media_groups', 'media']) {
     sqlite.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -65,7 +72,7 @@ describe('spending a view', () => {
     await validateAndConsumeToken(token);
     await validateAndConsumeToken(token);
 
-    const history = await getTokenViewHistory(id);
+    const history = await getTokenHistory(id);
     expect(history?.token.usageCount).toBe(2);
     expect(history?.views).toHaveLength(2);
     expect(history?.views.every(view => view.mediaId === mediaId)).toBe(true);
@@ -80,7 +87,7 @@ describe('spending a view', () => {
 
     await consumeGroupMediaView(tokenRow, second);
 
-    const history = await getTokenViewHistory(id);
+    const history = await getTokenHistory(id);
     expect(history?.views.map(view => view.mediaTitle)).toEqual(['Second']);
     // The first view is what started the token, so both carry the same moment.
     expect(history?.token.firstUsedAt).toEqual(history?.views[0]?.viewedAt);
@@ -93,11 +100,11 @@ describe('spending a view', () => {
     await validateAndConsumeToken(token);
     await validateAndConsumeToken(token);
 
-    expect((await getTokenViewHistory(id))?.views).toHaveLength(1);
+    expect((await getTokenHistory(id))?.views).toHaveLength(1);
   });
 });
 
-describe('getTokenViewHistory', () => {
+describe('getTokenHistory', () => {
   it('lists the views newest first and names what the token unlocks', async () => {
     const mediaId = await someMedia('Keynote');
     const { id, token } = await createToken({ mediaId, name: 'one' });
@@ -105,7 +112,7 @@ describe('getTokenViewHistory', () => {
     sqlite.prepare('UPDATE token_views SET viewed_at = viewed_at - 3600').run();
     await validateAndConsumeToken(token);
 
-    const history = await getTokenViewHistory(id);
+    const history = await getTokenHistory(id);
 
     expect(history?.targetTitle).toBe('Keynote');
     const [newest, oldest] = history!.views;
@@ -119,13 +126,41 @@ describe('getTokenViewHistory', () => {
     await validateAndConsumeToken(token);
     const [first, second] = sqlite.prepare('SELECT id FROM token_views ORDER BY rowid').all() as Array<{ id: string }>;
 
-    const history = await getTokenViewHistory(id);
+    const history = await getTokenHistory(id);
 
     expect(history?.views.map(view => view.id)).toEqual([second!.id, first!.id]);
   });
 
+  it('lists the payments that bought the token again, newest first, and whether the money went back', async () => {
+    const { id } = await createToken({ mediaId: await someMedia(), name: 'bought twice', expiresAt: new Date('2026-01-01T00:00:00Z') });
+    applyTokenPurchase({
+      tokenId: id,
+      paymentId: 'tr_first',
+      period: 'month',
+      amount: 900,
+      currency: 'EUR',
+      dashboardUrl: 'https://mollie.example/tr_first',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_second', period: 'year', ...paid, amount: 4900, now: new Date('2026-05-01T12:00:00Z') });
+    revertTokenPurchase('tr_first', new Date('2026-05-02T12:00:00Z'));
+
+    const history = await getTokenHistory(id);
+
+    expect(history?.purchases).toMatchObject([
+      { paymentId: 'tr_second', period: 'year', amount: 4900, currency: 'EUR', dashboardUrl: null, revertedAt: null },
+      {
+        paymentId: 'tr_first',
+        period: 'month',
+        amount: 900,
+        dashboardUrl: 'https://mollie.example/tr_first',
+        revertedAt: new Date('2026-05-02T12:00:00Z'),
+      },
+    ]);
+  });
+
   it('is `null` for a token that does not exist', async () => {
-    expect(await getTokenViewHistory('nope')).toBeNull();
+    expect(await getTokenHistory('nope')).toBeNull();
   });
 });
 
@@ -151,7 +186,7 @@ describe('deleting what views point at', () => {
 
     await deleteMedia(a);
 
-    const history = await getTokenViewHistory(id);
+    const history = await getTokenHistory(id);
     expect(history?.views.map(view => view.mediaTitle)).toEqual(['B']);
     // The total follows the history, so the dialog has no gap to explain.
     expect(history?.token.usageCount).toBe(1);
@@ -265,5 +300,112 @@ describe('listing views for the statistics', () => {
     const [latest] = await listRecentViews(new Date(0), new Date(Date.now() + 60 * 1000), null, 10);
 
     expect(latest).toMatchObject({ mediaTitle: 'Keynote', tokenName: 'one', token, batchName: null, groupName: null });
+  });
+});
+
+describe('payments of a token', () => {
+  it('remembers the payment a visitor started, so buying again leads back to it', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+
+    expect(setOpenPayment(id, 'tr_started', 'https://checkout.example/started')).toBe(true);
+
+    const row = await findTokenByValue(token);
+    expect(row?.openPaymentId).toBe('tr_started');
+    expect(row?.openPaymentCheckoutUrl).toBe('https://checkout.example/started');
+  });
+
+  it('keeps the first of two payments started at the same moment', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    setOpenPayment(id, 'tr_first', 'https://checkout.example/first');
+
+    // The second request lost the race: it must lead to the first checkout,
+    // not replace it with one the first visitor tab never sees.
+    expect(setOpenPayment(id, 'tr_second', 'https://checkout.example/second')).toBe(false);
+    expect((await findTokenByValue(token))?.openPaymentId).toBe('tr_first');
+  });
+
+  it('forgets an open payment only once that very payment has ended', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    setOpenPayment(id, 'tr_newer', 'https://checkout.example/newer');
+
+    // A late webhook for an older payment must not drop the newer one.
+    clearOpenPayment(id, 'tr_older');
+    expect((await findTokenByValue(token))?.openPaymentId).toBe('tr_newer');
+
+    clearOpenPayment(id, 'tr_newer');
+    const row = await findTokenByValue(token);
+    expect(row?.openPaymentId).toBeNull();
+    expect(row?.openPaymentCheckoutUrl).toBeNull();
+  });
+
+  it('extends the token once per paid payment and forgets it as open', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'expired',
+      usageLimit: 3,
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    setOpenPayment(id, 'tr_paid', 'https://checkout.example/paid');
+    const now = new Date('2026-03-15T12:00:00Z');
+
+    expect(applyTokenPurchase({ tokenId: id, paymentId: 'tr_paid', period: 'month', now, ...paid })).toBe('applied');
+    expect(applyTokenPurchase({ tokenId: id, paymentId: 'tr_paid', period: 'month', now, ...paid })).toBe('already_applied');
+
+    const renewed = await findTokenByValue(token);
+    expect(renewed?.expiresAt).toEqual(new Date('2026-04-15T12:00:00Z'));
+    expect(renewed?.usageLimit).toBeNull();
+    expect(renewed?.openPaymentId).toBeNull();
+    expect(renewed?.openPaymentCheckoutUrl).toBeNull();
+  });
+
+  it('counts the paid period from the purchase, not from a far end the views ran out before', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'used up',
+      usageLimit: 1,
+      expiresAt: new Date('2029-01-01T00:00:00Z'),
+    });
+    await validateAndConsumeToken(token);
+    const now = new Date('2026-03-15T12:00:00Z');
+
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_month', period: 'month', now, ...paid });
+
+    // A month's price buys a month of unlimited views, not three years of them.
+    expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2026-04-15T12:00:00Z'));
+  });
+
+  it('puts the token back to what it was once the money went back', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'charged back',
+      usageLimit: 3,
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    const now = new Date('2026-03-15T12:00:00Z');
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_reversed', period: 'year', now, ...paid });
+
+    expect(revertTokenPurchase('tr_reversed', now)).toBe('reverted');
+    const reverted = await findTokenByValue(token);
+    expect(reverted?.expiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
+    expect(reverted?.usageLimit).toBe(3);
+
+    // Mollie retries its webhook; the second call must change nothing more.
+    expect(revertTokenPurchase('tr_reversed', now)).toBe('already_reverted');
+    expect(revertTokenPurchase('tr_unknown', now)).toBe('unknown');
+  });
+
+  it('leaves a token alone whose end moved on since the purchase', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'renewed twice',
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_old', period: 'month', now: new Date('2026-03-15T12:00:00Z'), ...paid });
+    // The month ran out and the visitor bought a year; then the month's money
+    // went back. The year stands: it was paid for separately.
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_new', period: 'year', now: new Date('2026-05-01T12:00:00Z'), ...paid });
+
+    expect(revertTokenPurchase('tr_old')).toBe('superseded');
+    expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2027-05-01T12:00:00Z'));
   });
 });

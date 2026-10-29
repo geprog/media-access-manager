@@ -18,6 +18,10 @@
     "anmelden",
     "apos",
     "autoincrement",
+    "banktransfer",
+    "chargeback",
+    "chargebacks",
+    "creditcard",
     "culori",
     "dejavu",
     "demi",
@@ -29,12 +33,15 @@
     "favicons",
     "fontconfig",
     "geprog",
+    "iban",
     "labelable",
+    "mollie",
     "npmjs",
     "nuxt",
     "nuxtjs",
     "oembed",
     "oklch",
+    "paypal",
     "peac",
     "qrcode",
     "unlayered",
@@ -46,6 +53,14 @@
     {
       "filename": [
         "i18n/locales/de.json"
+      ],
+      "language": "de,en",
+      "words": []
+    },
+    {
+      "filename": [
+        "server/utils/purchase.ts",
+        "server/utils/purchase.test.ts"
       ],
       "language": "de,en",
       "words": []

@@ -18,7 +18,20 @@ export default defineNuxtConfig({
     // these files: it is frozen into a manifest at build time – see
     // `server/routes/branding/[...path].get.ts` and `docs/theming.md`.
     brandingDir: 'branding',
+    // Mollie API key (`test_…` or `live_…`) for visitors buying access again.
+    // Empty switches purchasing off: no prices are offered anywhere. See
+    // `docs/purchase.md`.
+    mollie: {
+      apiKey: '',
+      // Root of the Mollie API; empty uses Mollie's own. Only the end-to-end
+      // tests change it, to a local stand-in.
+      apiEndpoint: '',
+    },
     public: {
+      // Currency every media and group price is set in (ISO 4217).
+      payment: {
+        currency: 'EUR',
+      },
       // Where a visitor whose access has ended asks for a new link. Empty
       // means no address is published, so the token page offers no mail link.
       supportEmail: '',

@@ -38,6 +38,11 @@ export async function deleteTestData(page: Page) {
     await Promise.all(media
       .filter(row => row.title.startsWith('E2E'))
       .map(row => fetch(`/api/media/${row.id}`, { method: 'DELETE' })));
+    // Payment notices name what was paid for, which starts with the media title.
+    const notices: Array<{ paymentId: string, description: string }> = await fetch('/api/payments/notices').then(response => response.json());
+    await Promise.all(notices
+      .filter(row => row.description.startsWith('E2E'))
+      .map(row => fetch(`/api/payments/notices/${row.paymentId}/dismiss`, { method: 'POST' })));
   }, ADMIN_PASSWORD);
 }
 

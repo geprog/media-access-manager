@@ -20,6 +20,13 @@ process.env.NUXT_PUBLIC_POWERED_BY_NAME = 'Example Studio';
 process.env.NUXT_ADMIN_PASSWORD ||= 'password';
 process.env.NUXT_SESSION_PASSWORD ||= 'e2e-session-password-with-min-32-chars';
 
+// Purchases run against a local stand-in for Mollie (`e2e/support/mollieStub.ts`),
+// never the real API. Assigned outright so a developer's own key cannot leak in.
+const mollieStubPort = Number(process.env.MOLLIE_STUB_PORT) || 3200;
+process.env.NUXT_MOLLIE_API_KEY = 'test_e2e';
+process.env.NUXT_MOLLIE_API_ENDPOINT = `http://localhost:${mollieStubPort}/v2/`;
+process.env.NUXT_PUBLIC_PAYMENT_CURRENCY = 'EUR';
+
 /**
  * Set `E2E_DOCKER_IMAGE` to run the suite against the published container
  * instead of the Nuxt server `@nuxt/test-utils` builds and starts in-process.
@@ -46,7 +53,19 @@ const dockerEnv = [
   'NUXT_PUBLIC_PUBLISHER_NAME',
   'NUXT_PUBLIC_POWERED_BY_URL',
   'NUXT_PUBLIC_POWERED_BY_NAME',
+  'NUXT_MOLLIE_API_KEY',
+  'NUXT_PUBLIC_PAYMENT_CURRENCY',
 ].map(name => `--env ${name}=${JSON.stringify(process.env[name])}`).join(' ');
+// Inside the container `localhost` is the container itself, so the server
+// reaches the Mollie stub on the host through Docker's host gateway instead.
+const dockerMollieEnv = `--add-host=host.docker.internal:host-gateway --env NUXT_MOLLIE_API_ENDPOINT=http://host.docker.internal:${mollieStubPort}/v2/`;
+
+const mollieStub = {
+  command: 'node e2e/support/mollieStub.ts',
+  url: `http://localhost:${mollieStubPort}/__payments`,
+  env: { MOLLIE_STUB_PORT: String(mollieStubPort) },
+  reuseExistingServer: false,
+};
 
 export default defineConfig<ConfigOptions>({
   testDir: './e2e/tests',
@@ -68,8 +87,8 @@ export default defineConfig<ConfigOptions>({
   // Never reused: a stale container would be serving a different image than the
   // one under test.
   webServer: dockerImage
-    ? {
-        command: `docker rm --force ${dockerName} > /dev/null 2>&1; exec docker run --rm --name ${dockerName} --publish ${dockerPort}:3000 ${dockerEnv} ${dockerImage}`,
+    ? [mollieStub, {
+        command: `docker rm --force ${dockerName} > /dev/null 2>&1; exec docker run --rm --name ${dockerName} --publish ${dockerPort}:3000 ${dockerEnv} ${dockerMollieEnv} ${dockerImage}`,
         url: dockerUrl,
         reuseExistingServer: false,
         timeout: 120_000,
@@ -77,8 +96,8 @@ export default defineConfig<ConfigOptions>({
         // group Playwright kills, so a default SIGKILL teardown would leave it
         // running. SIGTERM is what the client forwards into the container.
         gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
-      }
-    : undefined,
+      }]
+    : [mollieStub],
   expect: {
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.01,

@@ -62,10 +62,21 @@
         {{ $t('public_request_access') }}
       </ULink>
     </p>
+    <!-- Buying again lifts the view limit for the whole group, so it belongs
+         to the list rather than to one used-up card. -->
+    <PublicPurchaseOptions
+      v-if="hasBlockedMedia && (purchaseOptions?.length || openPayment)"
+      class="mt-6"
+      :token="token"
+      :options="purchaseOptions ?? []"
+      :open-payment="openPayment"
+      @canceled="emit('canceled')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { OpenPayment, PurchaseOption } from './PublicPurchaseOptions.vue';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { getRemainingViews } from '~/utils/accessWindow';
 import { buildMailtoLink } from '~/utils/mailto';
@@ -87,7 +98,14 @@ const props = defineProps<{
   /** How long the token lasts from the first media watched, if not started yet. */
   validFor?: ValidityDuration | null
   media: GroupMediaEntry[]
+  /** Offered once some media are used up; empty when nothing is for sale. */
+  purchaseOptions?: PurchaseOption[]
+  /** A payment the visitor started and has not finished, continued instead of buying again. */
+  openPayment?: OpenPayment | null
 }>();
+
+/** The visitor canceled the payment they had started; the page reloads its access. */
+const emit = defineEmits<{ canceled: [] }>();
 
 const { t } = useI18n();
 

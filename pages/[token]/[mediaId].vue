@@ -1,6 +1,24 @@
 <template>
   <div class="flex min-h-screen flex-col items-center justify-center p-4">
-    <PublicAccessLoading v-if="loading" />
+    <!-- A payment being processed holds the page back, as on the token page. -->
+    <PublicPaymentNotice
+      v-if="!loading"
+      class="mb-6"
+      :token="token"
+      :state="paymentState"
+      :dashboard-url="dashboardUrl"
+      :content-shown="!!access"
+    />
+    <template v-if="loading">
+      <PublicAccessLoading :message="paymentMessage ?? undefined" />
+      <PublicPaymentNotice
+        class="mt-6"
+        :token="token"
+        :state="paymentState"
+        :dashboard-url="dashboardUrl"
+        :content-shown="!!access"
+      />
+    </template>
     <PublicAccessDenied
       v-else-if="!access"
       :token="token"
@@ -8,6 +26,9 @@
       :title="denial?.title"
       :media-id="denial?.mediaId"
       :group-id="denial?.groupId"
+      :purchase-options="denial?.purchaseOptions"
+      :open-payment="denial?.openPayment"
+      @canceled="execute"
     >
       <template #actions>
         <UButton variant="link" :to="groupLink" :label="$t('public_group_back')" />
@@ -56,11 +77,14 @@
 </template>
 
 <script setup lang="ts">
+import type { OpenPayment, PurchaseOption } from '~/components/PublicPurchaseOptions.vue';
+
 definePageMeta({
   public: true,
 });
 
 const route = useRoute();
+const { t } = useI18n();
 
 const token = computed(() => route.params.token as string);
 const mediaId = computed(() => route.params.mediaId as string);
@@ -69,19 +93,34 @@ const accessUrl = () => `/api/access/${encodeURIComponent(token.value)}/${encode
 
 /**
  * Opening this page can spend a view, so it is fetched fresh every time rather
- * than served from the cache of an earlier visit.
+ * than served from the cache of an earlier visit — and only once the token's
+ * payment, if any, is settled.
  */
-const { data: access, error, status } = useFetch(accessUrl, { getCachedData: () => undefined });
+const { data: access, error, status, execute } = useFetch(
+  accessUrl,
+  { getCachedData: () => undefined, immediate: false },
+);
+
+const { state: paymentState, dashboardUrl } = usePaymentCheck(token, execute);
+
+const paymentMessage = computed(() => paymentState.value === 'pending' ? t('public_payment_pending') : null);
 
 const { confirming, error: confirmError, confirm } = useViewConfirmation(accessUrl, access);
 
-const loading = computed(() => status.value === 'pending');
+const loading = computed(() => paymentMessage.value !== null || status.value === 'pending' || status.value === 'idle');
 
 const groupLink = computed(() => `/${encodeURIComponent(token.value)}`);
 
 const denial = computed(() => {
   const body = (confirmError.value ?? error.value)?.data as {
-    data?: { reason?: string, title?: string | null, mediaId?: string | null, groupId?: string | null }
+    data?: {
+      reason?: string
+      title?: string | null
+      mediaId?: string | null
+      groupId?: string | null
+      purchaseOptions?: PurchaseOption[]
+      openPayment?: OpenPayment | null
+    }
   } | undefined;
   return body?.data;
 });

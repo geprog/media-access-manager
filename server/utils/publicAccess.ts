@@ -1,10 +1,15 @@
 import type { H3Event } from 'h3';
+import type { Token } from '../db/schema';
 import type { ViewableMedia } from '../services/mediaService';
+import type { OpenPayment } from '../services/paymentService';
+import type { PurchaseOption } from './purchase';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { getMediaById, getViewableMedia } from '../services/mediaService';
+import { getPurchaseOffer } from '../services/paymentService';
 import {
   consumeGroupMediaView,
   denialFor,
+  findTokenByValue,
   getAccessDenial,
   resolveGroupMedia,
   validateAndConsumeToken,
@@ -47,10 +52,30 @@ interface DenialData {
   title: string | null
   mediaId: string | null
   groupId: string | null
+  /** What the visitor may buy to get access again; empty when nothing is for sale. */
+  purchaseOptions: PurchaseOption[]
+  /** A payment the visitor started and has not finished, to continue instead. */
+  openPayment: OpenPayment | null
 }
 
 export function denied(data: DenialData) {
   return createError({ statusCode: 404, statusMessage: 'Not Found', data });
+}
+
+/**
+ * What the page offers to buy, and the payment it would continue instead.
+ * Admins checking their own links are sent to the media or group instead of
+ * a checkout, so they are offered nothing.
+ */
+export async function purchaseOfferFor(
+  tokenRow: Token | null,
+  isAdmin: boolean,
+): Promise<Pick<DenialData, 'purchaseOptions' | 'openPayment'>> {
+  if (!tokenRow || isAdmin) {
+    return { purchaseOptions: [], openPayment: null };
+  }
+  const { options, openPayment } = await getPurchaseOffer(tokenRow);
+  return { purchaseOptions: options, openPayment };
 }
 
 /** Only the limits of the visitor's own token, nothing about its owner or batch. */
@@ -124,6 +149,7 @@ export async function openMediaToken(event: H3Event, token: string, { confirmed 
   if (!spent?.mediaId) {
     const denial = await getAccessDenial(token);
     const deniedMedia = denial.mediaId ? await getMediaById(denial.mediaId) : null;
+    const expiredToken = denial.reason === 'token_expired' ? await findTokenByValue(token) : null;
     throw denied({
       reason: denial.reason,
       title: deniedMedia?.title ?? null,
@@ -131,6 +157,7 @@ export async function openMediaToken(event: H3Event, token: string, { confirmed 
       // instead of a support mail. Visitors have no use for it.
       mediaId: isAdmin ? denial.mediaId : null,
       groupId: null,
+      ...await purchaseOfferFor(expiredToken, isAdmin),
     });
   }
   const viewable = await requireViewableMedia(spent.mediaId);
@@ -152,7 +179,14 @@ export async function openGroupMedia(
   if (!resolved) {
     // Unknown token, single-media token, or a media outside this token's
     // group: all a link that leads nowhere, and none of it worth explaining.
-    throw denied({ reason: 'invalid_token', title: null, mediaId: null, groupId: null });
+    throw denied({
+      reason: 'invalid_token',
+      title: null,
+      mediaId: null,
+      groupId: null,
+      purchaseOptions: [],
+      openPayment: null,
+    });
   }
   if (resolved.blockedBy) {
     const denial = denialFor(resolved.token, resolved.blockedBy);
@@ -163,6 +197,8 @@ export async function openGroupMedia(
       // there rather than to the one media they happened to click.
       mediaId: null,
       groupId: isAdmin ? denial.groupId : null,
+      // Renewing buys the whole group again, not just this media.
+      ...await purchaseOfferFor(resolved.token, isAdmin),
     });
   }
   const current = { ...resolved.token, usageCount: resolved.usageCount };

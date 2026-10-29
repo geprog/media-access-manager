@@ -1,0 +1,449 @@
+import type { APIRequestContext, Page } from '@playwright/test';
+import { expect, test } from '@nuxt/test-utils/playwright';
+import {
+  addMediaViaUI,
+  deleteTestData,
+  login,
+  stubProviderCalls,
+  uniqueId,
+  videoEmbed,
+} from '../support/admin';
+
+/**
+ * Purchases run against `e2e/support/mollieStub.ts`, which the Playwright
+ * config starts and points the app server at: the app really creates, updates
+ * and reads payments, just not at Mollie. The stub's checkout page offers
+ * "Pay" and "Cancel" in place of Mollie's hosted one.
+ */
+
+async function openMediaViaUI(page: Page, title: string): Promise<string> {
+  await page.getByRole('row').filter({ hasText: title }).click();
+  await expect(page).toHaveURL(/\/media\/[^/]+/);
+  return page.url().split('/media/')[1] ?? '';
+}
+
+/** Admin API calls run inside the page, for the `Secure` cookie reason in `deleteTestData`. */
+async function setMediaPrices(page: Page, mediaId: string, prices: { priceMonth: number | null, priceYear: number | null }) {
+  await page.evaluate(async ({ id, body }) => {
+    await fetch(`/api/media/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }, { id: mediaId, body: prices });
+}
+
+const EXPIRED_BATCH = 'E2E expired';
+
+/**
+ * Only the admin API can hand out a token whose window already closed. A
+ * batch of one, so the token is listed on the media page like any other.
+ */
+async function createExpiredToken(page: Page, mediaId: string): Promise<string> {
+  return page.evaluate(async ({ id, name }) => {
+    const response = await fetch('/api/batches', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mediaId: id,
+        name,
+        count: 1,
+        usageLimit: 3,
+        expiresAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      }),
+    });
+    const created: { tokens: Array<{ token: string }> } = await response.json();
+    return created.tokens[0]?.token ?? '';
+  }, { id: mediaId, name: EXPIRED_BATCH });
+}
+
+/** The token's history dialog, opened from the media page as an admin would. */
+async function openTokenHistory(page: Page, mediaId: string, token: string) {
+  await page.goto(`/media/${mediaId}`);
+  await page.getByRole('button').filter({ hasText: EXPIRED_BATCH }).click();
+  await page.getByRole('row').filter({ hasText: token }).getByRole('button', { name: 'History' }).click();
+  return page.getByRole('dialog');
+}
+
+/** Changes a payment at the Mollie stand-in the way Mollie would on its own. */
+function setStubPaymentStatus(request: APIRequestContext, paymentId: string | undefined, status: string) {
+  return request.post(new URL(`../__payments/${paymentId}/${status}`, process.env.NUXT_MOLLIE_API_ENDPOINT).href);
+}
+
+/** What Mollie posts when a payment changes: nothing but the id, form-encoded. */
+function postWebhook(request: APIRequestContext, paymentId: string) {
+  return request.post('/api/payments/webhook', { form: { id: paymentId } });
+}
+
+interface TokenRow { token: string, expiresAt: string | null, usageLimit: number | null }
+
+/** The token as the admin API lists it; the page must hold an admin session. */
+async function fetchTokenRow(page: Page, mediaId: string, token: string): Promise<TokenRow | undefined> {
+  const rows = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/tokens?mediaId=${id}`);
+    return response.json() as Promise<TokenRow[]>;
+  }, mediaId);
+  return rows.find(row => row.token === token);
+}
+
+async function readToken(page: Page, mediaId: string, token: string): Promise<TokenRow | undefined> {
+  await login(page);
+  return fetchTokenRow(page, mediaId, token);
+}
+
+const A_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
+function expectAboutAYearAhead(row: TokenRow | undefined) {
+  const expiresAt = new Date(row?.expiresAt ?? 0).getTime();
+  expect(Math.abs(expiresAt - (Date.now() + A_YEAR_MS))).toBeLessThan(TWO_DAYS_MS);
+}
+
+/** Media with prices and an expired token, seen by a visitor without admin session. */
+async function visitExpiredPricedMedia(page: Page, title: string) {
+  await login(page);
+  await addMediaViaUI(page, title);
+  const mediaId = await openMediaViaUI(page, title);
+  await setMediaPrices(page, mediaId, { priceMonth: 900, priceYear: 4900 });
+  const token = await createExpiredToken(page, mediaId);
+  await page.context().clearCookies();
+  await page.goto(`/${token}`);
+  await expect(page.getByText(/access to this video has ended/i)).toBeVisible({ timeout: 5000 });
+  return { mediaId, token };
+}
+
+test.beforeEach(async ({ page }) => {
+  await stubProviderCalls(page);
+});
+
+test.afterEach(async ({ page }) => {
+  await deleteTestData(page);
+});
+
+test.describe('Buying access again', () => {
+  test('admin sets the prices of a media', async ({ page }, testInfo) => {
+    await login(page);
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+    await openMediaViaUI(page, title);
+
+    await page.getByLabel('Price for 1 month').fill('9.99');
+    await page.getByLabel('Price for 1 year').fill('49');
+    await page.getByRole('button', { name: 'Save prices' }).click();
+    await expect(page.getByText('Prices saved')).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByLabel('Price for 1 month')).toHaveValue('€9.99');
+    await expect(page.getByLabel('Price for 1 year')).toHaveValue('€49.00');
+  });
+
+  test('a visitor pays for a year and watches again', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await expect(page.getByRole('button', { name: '1 month for €9.00' })).toBeVisible();
+    // Buying is the quickest way back, but asking support stays available.
+    await expect(page.getByRole('link', { name: /request further access/i })).toBeVisible();
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+
+    // The customer sees what they pay for on the checkout page.
+    await expect(page.getByRole('heading', { name: `${title} – 1 year access` })).toBeVisible();
+    await expect(page.getByText('49.00 EUR')).toBeVisible();
+
+    // The real access endpoint would now fetch the embed from Vimeo.
+    await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        title,
+        embed: videoEmbed('E2E Purchased Video'),
+        access: { expiresAt: null, usageLimit: null, usageCount: 1 },
+      }),
+    }));
+    await page.getByRole('button', { name: 'Pay' }).click();
+
+    await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(`/${token}`);
+    // Mollie is told nothing but the token page to come back to.
+    const sent: Array<{ redirectUrl: string }> = await (await request.get(
+      new URL('../__payments', process.env.NUXT_MOLLIE_API_ENDPOINT).href,
+    )).json();
+    expect(sent.at(-1)?.redirectUrl).toMatch(new RegExp(`/${token}$`));
+
+    // The token itself was renewed: a year from now, and no view limit.
+    const renewed = await readToken(page, mediaId, token);
+    expectAboutAYearAhead(renewed);
+    expect(renewed?.usageLimit).toBeNull();
+
+    // The admin finds the payment in the token's history, with the way to it in Mollie.
+    const dialog = await openTokenHistory(page, mediaId, token);
+    const payment = dialog.getByRole('row').filter({ hasText: '1 year' });
+    await expect(payment).toContainText('€49.00');
+    await expect(payment).toContainText('Paid');
+    await expect(payment.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', /\/dashboard\/payments\/tr_/);
+  });
+
+  test('a visitor who chose bank transfer can cancel it and pay another way', async ({ page }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.getByRole('button', { name: 'Bank transfer' }).click();
+
+    // Days may pass before the money arrives, so the page does not wait for
+    // it — and does not offer a second payment either.
+    await expect(page.getByText(/waiting for your bank transfer/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Show payment details' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /for €/ })).toHaveCount(0);
+
+    // Mollie lets a bank transfer be canceled until then, which is the way out.
+    await page.getByRole('button', { name: 'Cancel payment and pay another way' }).click();
+
+    await expect(page.getByRole('button', { name: '1 month for €9.00' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/waiting for your bank transfer/i)).toHaveCount(0);
+    await expect(page).toHaveURL(`/${token}`);
+  });
+
+  test('Mollie\'s webhook extends the token once, however often it calls', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+    // Paid at Mollie, and only Mollie's call tells the app so far.
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+
+    const renewed = await readToken(page, mediaId, token);
+    expectAboutAYearAhead(renewed);
+    expect(renewed?.usageLimit).toBeNull();
+
+    // Mollie retries its call; an id it does not know gets the same answer and
+    // changes nothing either.
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+    expect((await postWebhook(request, 'tr_unknown')).status()).toBe(200);
+    expect((await fetchTokenRow(page, mediaId, token))?.expiresAt).toBe(renewed?.expiresAt);
+  });
+
+  test('a chargeback takes the bought access back and tells the admin', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+    expect((await readToken(page, mediaId, token))?.usageLimit).toBeNull();
+
+    // The payer's bank took the money back. Mollie keeps the payment paid and
+    // calls the webhook again, with the charged back amount on the payment.
+    expect((await setStubPaymentStatus(request, paymentId, 'chargeback')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+
+    const reverted = await fetchTokenRow(page, mediaId, token);
+    expect(new Date(reverted?.expiresAt ?? 0).getTime()).toBeLessThan(Date.now());
+    expect(reverted?.usageLimit).toBe(3);
+
+    // The token's history says so, next to the payment that bought nothing now.
+    const dialog = await openTokenHistory(page, mediaId, token);
+    await expect(dialog.getByRole('row').filter({ hasText: '1 month' })).toContainText(/refunded or charged back on/i);
+
+    await page.goto('/');
+    const notice = page.getByRole('alert').filter({ hasText: `${title} – 1 month access` });
+    await expect(notice).toContainText(/refunded or charged back/i);
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(notice).toHaveCount(0);
+    await page.reload();
+    await expect(notice).toHaveCount(0);
+  });
+
+  test('a payment completed after its link was deleted is shown to the admin', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+
+    // The admin deletes the media, and its tokens with it, while the visitor
+    // is still at the checkout.
+    await login(page);
+    await page.evaluate(id => fetch(`/api/media/${id}`, { method: 'DELETE' }), mediaId);
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+
+    // Nothing to extend: the admin is told, with the way to the refund.
+    await page.goto('/');
+    const notice = page.getByRole('alert').filter({ hasText: `${title} – 1 year access` });
+    await expect(notice).toContainText(/no longer exists/i);
+    await expect(notice.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', new RegExp(`/dashboard/payments/${paymentId}$`));
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(notice).toHaveCount(0);
+  });
+
+  test('a canceled payment offers the purchase again', async ({ page }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+
+    await expect(page.getByText('The payment was not completed.')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/access to this video has ended/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: '1 month for €9.00' })).toBeVisible();
+
+    const unchanged = await readToken(page, mediaId, token);
+    expect(new Date(unchanged?.expiresAt ?? 0).getTime()).toBeLessThan(Date.now());
+    expect(unchanged?.usageLimit).toBe(3);
+  });
+
+  test('a visitor who leaves the checkout continues the same payment', async ({ page }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const checkoutUrl = page.url();
+    // Mollie's link back to the shop leaves the payment open until it expires,
+    // so it is neither "being processed" nor over.
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await expect(page.getByText(/started a payment that is not finished/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/being processed|not completed/i)).toHaveCount(0);
+    // No second payment: buying is replaced by continuing the one begun.
+    await expect(page.getByRole('button', { name: /for €/ })).toHaveCount(0);
+    await expect(page).toHaveURL(`/${token}`);
+
+    // Reloading must not forget it either: the token remembers its payment.
+    await page.reload();
+    await page.getByRole('button', { name: 'Continue payment' }).click();
+    await expect(page).toHaveURL(checkoutUrl);
+
+    await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        title,
+        embed: videoEmbed('E2E Purchased Video'),
+        access: { expiresAt: null, usageLimit: null, usageCount: 1 },
+      }),
+    }));
+    await page.getByRole('button', { name: 'Pay' }).click();
+    await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
+
+    const renewed = await readToken(page, mediaId, token);
+    expect(renewed?.usageLimit).toBeNull();
+  });
+
+  test('offers buying again once Mollie lets an open payment expire', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1];
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByRole('button', { name: 'Continue payment' })).toBeVisible({ timeout: 10000 });
+
+    // No webhook reaches a local server, so the page asks Mollie itself.
+    const expired = await setStubPaymentStatus(request, paymentId, 'expired');
+    expect(expired.ok()).toBe(true);
+    await page.goto(`/${token}`);
+
+    await expect(page.getByRole('button', { name: '1 year for €49.00' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Continue payment' })).toHaveCount(0);
+  });
+
+  test('opening a token whose payment is being processed waits for it', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1];
+    // Processing goes on at Mollie while the visitor opens their link again,
+    // without coming back from the checkout.
+    expect((await setStubPaymentStatus(request, paymentId, 'pending')).ok()).toBe(true);
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/payment is being processed/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/access to this video has ended/i)).toHaveCount(0);
+    // The Mollie dashboard is the account's own view, not the visitor's.
+    await expect(page.getByRole('link', { name: 'View payment in Mollie' })).toHaveCount(0);
+
+    await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'media',
+        title,
+        embed: videoEmbed('E2E Purchased Video'),
+        access: { expiresAt: null, usageLimit: null, usageCount: 1 },
+      }),
+    }));
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    await expect(page.locator('iframe[title="E2E Purchased Video"]')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('shows an admin the payment in Mollie while it is processed', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1];
+    expect((await setStubPaymentStatus(request, paymentId, 'pending')).ok()).toBe(true);
+
+    await login(page);
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/payment is being processed/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', new RegExp(`/dashboard/payments/${paymentId}$`));
+  });
+
+  test('offers nothing to buy for media without prices', async ({ page }, testInfo) => {
+    await login(page);
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    await addMediaViaUI(page, title);
+    const mediaId = await openMediaViaUI(page, title);
+    const token = await createExpiredToken(page, mediaId);
+    await page.context().clearCookies();
+    await page.goto(`/${token}`);
+
+    await expect(page.getByText(/access to this video has ended/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: /request further access/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /for €/ })).toHaveCount(0);
+  });
+
+  test('a group whose media are partly used up offers the purchase beside the list', async ({ page }) => {
+    // Spending a group's views needs the provider's embed, so the list with one
+    // media used up comes from a stand-in for the access endpoint.
+    await page.route(/\/api\/access\/[^/]+$/, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'group',
+        title: 'E2E Group',
+        access: { expiresAt: null, usageLimit: 1 },
+        media: [
+          { id: 'a', title: 'E2E Watched', blockedBy: 'usage_limit_reached', usageLimit: 1, usageCount: 1 },
+          { id: 'b', title: 'E2E Fresh', blockedBy: null, usageLimit: 1, usageCount: 0 },
+        ],
+        purchaseOptions: [{ period: 'year', amount: 12900, currency: 'EUR' }],
+      }),
+    }));
+    await page.goto('/e2e-group-token');
+
+    await expect(page.getByText(/can no longer be opened/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: '1 year for €129.00' })).toBeVisible();
+    // Only the periods that have a price are offered.
+    await expect(page.getByRole('button', { name: /1 month for/ })).toHaveCount(0);
+  });
+});

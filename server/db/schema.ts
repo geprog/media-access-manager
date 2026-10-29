@@ -12,10 +12,21 @@ export interface VimeoConfig extends ProviderConfig<'vimeo'> {
   videoId: string
 }
 
+/**
+ * What buying access again costs, in the currency's minor unit (cents), for
+ * media and groups alike. `null` means that period is not for sale. Only an
+ * expired token's own target is priced — a group is never the sum of its media.
+ */
+const purchasePrices = {
+  priceMonth: integer('price_month'),
+  priceYear: integer('price_year'),
+};
+
 export const media = sqliteTable('media', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   providerConfig: text('provider_config', { mode: 'json' }).$type<VimeoConfig>().notNull(),
+  ...purchasePrices,
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -27,6 +38,7 @@ export const media = sqliteTable('media', {
 export const mediaGroups = sqliteTable('media_groups', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  ...purchasePrices,
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -85,6 +97,18 @@ export const tokens = sqliteTable('tokens', {
    * actually measured against is `tokenMediaUsage`.
    */
   usageCount: integer('usage_count').notNull().default(0),
+  /**
+   * The Mollie payment the visitor started to buy this token again, until
+   * Mollie reports it paid, expired, canceled or failed. Buying again leads
+   * back to it instead of starting a second payment. See `docs/purchase.md`.
+   */
+  openPaymentId: text('open_payment_id'),
+  /**
+   * Where that payment is paid. Kept because Mollie's API stops handing the
+   * checkout link out once an attempt failed or was canceled, while the page
+   * itself still lets the visitor try again.
+   */
+  openPaymentCheckoutUrl: text('open_payment_checkout_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -115,6 +139,53 @@ export const tokenViews = sqliteTable('token_views', {
   index('token_views_viewed_at_idx').on(table.viewedAt),
 ]);
 
+/**
+ * One row per *paid* Mollie payment that extended a token: the token's payment
+ * history, and the only thing that stops a retried webhook from extending
+ * twice. What was paid is kept, nothing about who paid: that stays with Mollie.
+ */
+export const tokenPurchases = sqliteTable('token_purchases', {
+  paymentId: text('payment_id').primaryKey(),
+  tokenId: text('token_id').notNull().references(() => tokens.id),
+  period: text('period', { enum: ['month', 'year'] }).notNull(),
+  /**
+   * What the period cost at the time, in the currency's minor unit — the price
+   * may change later — and where the payment is in the Mollie dashboard, for
+   * the token's history in the admin UI. `null` on purchases from before this
+   * was kept.
+   */
+  amount: integer('amount'),
+  currency: text('currency'),
+  dashboardUrl: text('dashboard_url'),
+  /**
+   * The token's end and view limit before the purchase, so the extension can
+   * be undone when the money goes back — a refund or a chargeback.
+   */
+  expiresBefore: integer('expires_before', { mode: 'timestamp' }),
+  usageLimitBefore: integer('usage_limit_before'),
+  expiresAfter: integer('expires_after', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  /** When the money went back and the token was set back to what it was. */
+  revertedAt: integer('reverted_at', { mode: 'timestamp' }),
+});
+
+/**
+ * Payments that need an admin's eye: one that was paid after its token was
+ * deleted and so bought nothing (to be refunded in Mollie), and one that was
+ * refunded or charged back, whose access the app withdrew. Shown in the admin
+ * UI until dismissed. Holds the payment's description and its Mollie link,
+ * nothing about the payer.
+ */
+export const paymentNotices = sqliteTable('payment_notices', {
+  paymentId: text('payment_id').primaryKey(),
+  kind: text('kind', { enum: ['unapplied', 'reverted'] }).notNull(),
+  /** What the payment was for, as Mollie's checkout showed it. */
+  description: text('description').notNull(),
+  dashboardUrl: text('dashboard_url'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  dismissedAt: integer('dismissed_at', { mode: 'timestamp' }),
+});
+
 export type Media = typeof media.$inferSelect;
 export type MediaInsert = typeof media.$inferInsert;
 export type MediaGroup = typeof mediaGroups.$inferSelect;
@@ -124,4 +195,6 @@ export type BatchInsert = typeof batches.$inferInsert;
 export type Token = typeof tokens.$inferSelect;
 export type TokenInsert = typeof tokens.$inferInsert;
 export type TokenMediaUsage = typeof tokenMediaUsage.$inferSelect;
+export type TokenPurchase = typeof tokenPurchases.$inferSelect;
+export type PaymentNotice = typeof paymentNotices.$inferSelect;
 export type TokenView = typeof tokenViews.$inferSelect;

@@ -96,7 +96,7 @@
       </UTable>
     </UCard>
 
-    <TokenViewHistoryModal v-model:token-id="historyTokenId" />
+    <TokenHistoryModal v-model:token-id="historyTokenId" />
   </div>
 </template>
 

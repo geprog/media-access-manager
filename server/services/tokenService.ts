@@ -1,15 +1,17 @@
-import type { Media, MediaGroup, Token, TokenView } from '../db/schema';
+import type { Media, MediaGroup, Token, TokenPurchase, TokenView } from '../db/schema';
 import type { DbTransaction } from '../utils/db';
 import type { GroupMediaAccess } from '../utils/groupAccess';
+import type { PurchasePeriod } from '../utils/purchase';
 import type { TokenSettingsChanges } from '../utils/tokenSettings';
 import type { TokenInvalidReason } from '../utils/tokenValidation';
 import type { ValidityDuration } from '~/utils/accessWindow';
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, isNull, lte, sql } from 'drizzle-orm';
 import { getEditedValidity } from '~/utils/accessWindow';
-import { batches, media, mediaGroups, tokenMediaUsage, tokens, tokenViews } from '../db/schema';
+import { batches, media, mediaGroups, tokenMediaUsage, tokenPurchases, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { purchaseExpiry } from '../utils/purchase';
 import { deleteTokensWhere } from '../utils/tokenDeletion';
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
@@ -264,21 +266,24 @@ export interface TokenViewEntry extends TokenView {
   mediaTitle: string
 }
 
-export interface TokenViewHistory {
+export interface TokenHistory {
   token: Token
   /** The media or group the token unlocks, by name. */
   targetTitle: string | null
   /** Newest first. */
   views: TokenViewEntry[]
+  /** The payments that bought the token again, newest first. */
+  purchases: TokenPurchase[]
 }
 
 /**
- * Everything an admin needs when a visitor asks where their views went: the
- * token as it stands, and every view it spent, with the media each one opened.
- * Views spent before the history existed are not in it — `usageCount` still
- * counts them, so a count above the number of views means exactly that.
+ * Everything an admin needs when a visitor asks where their views went, or
+ * what they paid for: the token as it stands, every view it spent, with the
+ * media each one opened, and every payment that bought it again. Views spent
+ * before the history existed are not in it — `usageCount` still counts them,
+ * so a count above the number of views means exactly that.
  */
-export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHistory | null> {
+export async function getTokenHistory(tokenId: string): Promise<TokenHistory | null> {
   const db = useDb();
   const tokenRow = (await db.select().from(tokens).where(eq(tokens.id, tokenId)))[0];
   if (!tokenRow) {
@@ -290,6 +295,11 @@ export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHis
     .innerJoin(media, eq(media.id, tokenViews.mediaId))
     .where(eq(tokenViews.tokenId, tokenId))
     .orderBy(...newestViewFirst());
+  const purchases = await db
+    .select()
+    .from(tokenPurchases)
+    .where(eq(tokenPurchases.tokenId, tokenId))
+    .orderBy(desc(tokenPurchases.createdAt), desc(sql`${tokenPurchases}.rowid`));
   let targetTitle: string | null = null;
   if (tokenRow.mediaId) {
     targetTitle = (await getMediaById(tokenRow.mediaId))?.title ?? null;
@@ -297,7 +307,7 @@ export async function getTokenViewHistory(tokenId: string): Promise<TokenViewHis
   else if (tokenRow.groupId) {
     targetTitle = (await getMediaGroupById(tokenRow.groupId))?.name ?? null;
   }
-  return { token: tokenRow, targetTitle, views };
+  return { token: tokenRow, targetTitle, views, purchases };
 }
 
 /**
@@ -574,4 +584,154 @@ export async function deleteToken(tokenId: string): Promise<{ deletedBatch: bool
     }
     return { deletedBatch };
   });
+}
+
+/**
+ * Whether the visitor holding this token may buy access again: the token ran
+ * out by date or by views, or — for a group — some of its media are used up
+ * while the window is still open. A link that has not started yet was never
+ * handed over, so there is nothing to renew.
+ */
+export async function isTokenRenewable(tokenRow: Token): Promise<boolean> {
+  if (!tokenRow.groupId) {
+    const reason = getTokenInvalidReason(tokenRow);
+    return reason === 'expired' || reason === 'usage_limit_reached';
+  }
+  const windowReason = getGroupWindowReason(tokenRow);
+  if (windowReason) {
+    return windowReason === 'expired';
+  }
+  const access = await getGroupTokenAccess(tokenRow.token);
+  return !!access?.media.some(entry => entry.blockedBy === 'usage_limit_reached');
+}
+
+export type PurchaseApplication = 'applied' | 'already_applied' | 'token_missing';
+
+/**
+ * Gives a token the paid period, at most once per payment. The period counts
+ * from now, never on top of what was left: a token is only for sale once it
+ * ran out. What was bought is time, so the view limit goes: a paid month that
+ * closed after three views would be a broken promise. Per-media counts of a
+ * group token stay, since those views did happen — they just no longer limit
+ * anything. What the token was before is kept with the purchase, so a refund
+ * or chargeback can put it back.
+ *
+ * Runs as one synchronous transaction, so a retried webhook racing the return
+ * page finds the other's row and leaves the token alone.
+ */
+export function applyTokenPurchase(data: {
+  tokenId: string
+  paymentId: string
+  period: PurchasePeriod
+  /** What was paid, in minor units, for the token's history. */
+  amount: number
+  currency: string
+  dashboardUrl: string | null
+  now?: Date
+}): PurchaseApplication {
+  const db = useDb();
+  const now = data.now ?? new Date();
+  return db.transaction((tx) => {
+    const existing = tx
+      .select({ paymentId: tokenPurchases.paymentId })
+      .from(tokenPurchases)
+      .where(eq(tokenPurchases.paymentId, data.paymentId))
+      .all()[0];
+    if (existing) {
+      return 'already_applied';
+    }
+    const tokenRow = tx.select().from(tokens).where(eq(tokens.id, data.tokenId)).all()[0];
+    if (!tokenRow) {
+      return 'token_missing';
+    }
+    const expiresAfter = purchaseExpiry(data.period, now);
+    tx.insert(tokenPurchases).values({
+      paymentId: data.paymentId,
+      tokenId: tokenRow.id,
+      period: data.period,
+      amount: data.amount,
+      currency: data.currency,
+      dashboardUrl: data.dashboardUrl,
+      expiresBefore: tokenRow.expiresAt,
+      usageLimitBefore: tokenRow.usageLimit,
+      expiresAfter,
+      createdAt: now,
+    }).run();
+    // The paid payment is no longer one to lead the visitor back to.
+    const paidOpenPayment = tokenRow.openPaymentId === data.paymentId;
+    tx.update(tokens)
+      .set({
+        expiresAt: expiresAfter,
+        usageLimit: null,
+        ...(paidOpenPayment ? { openPaymentId: null, openPaymentCheckoutUrl: null } : {}),
+      })
+      .where(eq(tokens.id, tokenRow.id))
+      .run();
+    return 'applied';
+  });
+}
+
+export type PurchaseReversal = 'reverted' | 'superseded' | 'already_reverted' | 'unknown';
+
+/**
+ * Takes a purchase back once its money went back: the token returns to the end
+ * and view limit it had before — unless something moved its end since, a later
+ * purchase or an admin, in which case that stands (`superseded`). Either way
+ * the purchase is marked, so a repeated webhook changes nothing more.
+ */
+export function revertTokenPurchase(paymentId: string, now: Date = new Date()): PurchaseReversal {
+  const db = useDb();
+  return db.transaction((tx) => {
+    const purchase = tx.select().from(tokenPurchases).where(eq(tokenPurchases.paymentId, paymentId)).all()[0];
+    if (!purchase) {
+      return 'unknown';
+    }
+    if (purchase.revertedAt) {
+      return 'already_reverted';
+    }
+    tx.update(tokenPurchases).set({ revertedAt: now }).where(eq(tokenPurchases.paymentId, paymentId)).run();
+    const tokenRow = tx.select().from(tokens).where(eq(tokens.id, purchase.tokenId)).all()[0];
+    if (!tokenRow || tokenRow.expiresAt?.getTime() !== purchase.expiresAfter.getTime()) {
+      return 'superseded';
+    }
+    tx.update(tokens)
+      .set({ expiresAt: purchase.expiresBefore, usageLimit: purchase.usageLimitBefore })
+      .where(eq(tokens.id, tokenRow.id))
+      .run();
+    return 'reverted';
+  });
+}
+
+/**
+ * Remembers the payment a visitor just started for this token, so buying again
+ * while it is open leads back to it instead of starting a second one. Only
+ * while the token has none: of two purchases started at the same moment, the
+ * first one remembered is the one both visitors are led to. `false` when
+ * another payment got there first.
+ */
+export function setOpenPayment(tokenId: string, paymentId: string, checkoutUrl: string): boolean {
+  const { changes } = useDb()
+    .update(tokens)
+    .set({ openPaymentId: paymentId, openPaymentCheckoutUrl: checkoutUrl })
+    .where(and(eq(tokens.id, tokenId), isNull(tokens.openPaymentId)))
+    .run();
+  return changes > 0;
+}
+
+/**
+ * Forgets the token's open payment once Mollie reports it over. Only that very
+ * payment: a late webhook for an older one must not drop a newer payment.
+ */
+export function clearOpenPayment(tokenId: string, paymentId: string) {
+  useDb()
+    .update(tokens)
+    .set({ openPaymentId: null, openPaymentCheckoutUrl: null })
+    .where(and(eq(tokens.id, tokenId), eq(tokens.openPaymentId, paymentId)))
+    .run();
+}
+
+export async function findTokenById(tokenId: string) {
+  const db = useDb();
+  const rows = await db.select().from(tokens).where(eq(tokens.id, tokenId));
+  return rows[0] ?? null;
 }

@@ -68,6 +68,11 @@ design without a rebuild.
 - If access has ended, the page explains why and – when
   `NUXT_PUBLIC_SUPPORT_EMAIL` is configured – offers a mail link to request a
   new one.
+- When `NUXT_MOLLIE_API_KEY` is set and the media or group has prices, an
+  expired link can be bought again for a month or a year through
+  [Mollie](https://www.mollie.com/). The purchase extends the visitor's own
+  token; no payment or personal data is stored – see
+  [docs/purchase.md](docs/purchase.md).
 
 For the full picture of the data model and the flows, read
 [docs/concept.md](docs/concept.md).
@@ -100,17 +105,19 @@ applied automatically when the server first touches it – no manual setup step.
 All settings are environment variables (Nuxt `runtimeConfig`). Copy
 [.env.example](.env.example) as a starting point.
 
-| Variable                    | Required          | Description                                                                                                                        |
-| --------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `NUXT_ADMIN_PASSWORD`       | **in production** | The single password protecting the admin UI. `pnpm dev` falls back to `password`.                                                  |
-| `NUXT_SESSION_PASSWORD`     | **in production** | Secret sealing the admin session cookie, at least 32 characters.                                                                   |
-| `NUXT_VIMEO_API_TOKEN`      | for Vimeo         | Vimeo API token used to list your videos and check their privacy settings.                                                         |
-| `NUXT_PUBLIC_SUPPORT_EMAIL` | no                | Address offered to visitors whose access has ended. Empty means no mail link.                                                      |
-| `NUXT_PUBLIC_THEME_*`       | no                | White-label theme, see [docs/theming.md](docs/theming.md).                                                                         |
-| `NUXT_BRANDING_DIR`         | no                | Where the files named by `NUXT_PUBLIC_THEME_LOGO`/`_LOGO_DARK`/`_FAVICON` are read from, defaults to `branding` (`/app/branding`). |
-| `NUXT_PUBLIC_PUBLISHER_*`   | no                | Name and URL of whoever publishes the media, linked in header and footer.                                                          |
-| `NUXT_PUBLIC_POWERED_BY_*`  | no                | Name and URL credited in the footer, defaults to the upstream project.                                                             |
-| `PORT`                      | no                | Port to listen on, defaults to `3000`.                                                                                             |
+| Variable                       | Required          | Description                                                                                                                        |
+| ------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_ADMIN_PASSWORD`          | **in production** | The single password protecting the admin UI. `pnpm dev` falls back to `password`.                                                  |
+| `NUXT_SESSION_PASSWORD`        | **in production** | Secret sealing the admin session cookie, at least 32 characters.                                                                   |
+| `NUXT_VIMEO_API_TOKEN`         | for Vimeo         | Vimeo API token used to list your videos and check their privacy settings.                                                         |
+| `NUXT_PUBLIC_SUPPORT_EMAIL`    | no                | Address offered to visitors whose access has ended. Empty means no mail link.                                                      |
+| `NUXT_MOLLIE_API_KEY`          | for purchases     | Mollie API key (`test_…`/`live_…`). Empty switches buying access again off, see [docs/purchase.md](docs/purchase.md).              |
+| `NUXT_PUBLIC_PAYMENT_CURRENCY` | no                | Currency of all media and group prices, defaults to `EUR`.                                                                         |
+| `NUXT_PUBLIC_THEME_*`          | no                | White-label theme, see [docs/theming.md](docs/theming.md).                                                                         |
+| `NUXT_BRANDING_DIR`            | no                | Where the files named by `NUXT_PUBLIC_THEME_LOGO`/`_LOGO_DARK`/`_FAVICON` are read from, defaults to `branding` (`/app/branding`). |
+| `NUXT_PUBLIC_PUBLISHER_*`      | no                | Name and URL of whoever publishes the media, linked in header and footer.                                                          |
+| `NUXT_PUBLIC_POWERED_BY_*`     | no                | Name and URL credited in the footer, defaults to the upstream project.                                                             |
+| `PORT`                         | no                | Port to listen on, defaults to `3000`.                                                                                             |
 
 > [!IMPORTANT]
 > `NUXT_ADMIN_PASSWORD` and `NUXT_SESSION_PASSWORD` only have defaults in
@@ -154,6 +161,14 @@ docker run -d \
 
 `/app/data` holds the SQLite database and is the only writable path – mount a
 volume there or the data is gone with the container.
+
+The app learns its own public address from each request, honouring
+`X-Forwarded-Host` and `X-Forwarded-Proto`, so a deployment needs no URL
+configured and one image can serve any domain. That makes the reverse proxy in
+front of it responsible for those two headers: it must set them to the public
+host and scheme and overwrite whatever a client sent. They end up in the
+Mollie redirect and webhook URLs and in the admin link stored with each
+payment, which is why a client must not be able to choose them.
 
 `/app/branding` is empty and optional. It holds the logo and favicon of a
 white-label deployment, served at `/branding/*` and read on every request, which
@@ -204,7 +219,7 @@ request.
 ```text
 components/        Vue components (admin tables/forms, public player)
 composables/       Shared reactive helpers
-docs/              concept.md (architecture & data model), theming.md
+docs/              concept.md (architecture & data model), theming.md, purchase.md
 e2e/               Playwright specs and helpers
 i18n/locales/      en.json, de.json
 pages/             Admin pages plus the public /{token} routes

@@ -70,6 +70,25 @@
             </template>
           </UTable>
         </div>
+
+        <!-- The payments that bought this token again: what was paid, when,
+             and whether the money went back. Only where buying is on, or
+             something was bought before it was switched off. -->
+        <div v-if="history.purchases.length > 0 || paymentSettings?.enabled">
+          <h3 class="mb-2 font-semibold">
+            {{ t('token_history_payments') }}
+          </h3>
+          <UTable
+            :data="history.purchases"
+            :columns="purchaseColumns"
+          >
+            <template #empty>
+              <p class="py-4 text-sm text-muted">
+                {{ t('token_history_payments_empty') }}
+              </p>
+            </template>
+          </UTable>
+        </div>
       </div>
       <p v-else-if="status === 'pending'" class="py-4 text-sm text-muted">
         {{ t('public_loading') }}
@@ -83,19 +102,24 @@
 
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui';
+import { formatPrice } from '~/utils/money';
 
 /** The token whose history is shown; the dialog is open while it is set. */
 const tokenId = defineModel<string | null>('tokenId', { required: true });
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const formatDuration = useDurationFormatter();
 
-const { data: history, status, error, execute, clear } = useFetch(() => `/api/tokens/${tokenId.value}/views`, {
+const { data: history, status, error, execute, clear } = useFetch(() => `/api/tokens/${tokenId.value}/history`, {
   immediate: false,
   watch: false,
 });
 
 type ViewEntry = NonNullable<typeof history.value>['views'][number];
+type PurchaseEntry = NonNullable<typeof history.value>['purchases'][number];
+
+// Whether buying is on at all decides if an empty payment list is worth showing.
+const { data: paymentSettings } = useFetch('/api/payments/settings');
 
 watch(tokenId, (id) => {
   // What the last token showed must not flash up for the next one.
@@ -165,5 +189,48 @@ const columns = computed<TableColumn<ViewEntry>[]>(() => [
       header: t('media_title'),
     } satisfies TableColumn<ViewEntry>]
     : []),
+]);
+
+const purchaseColumns = computed<TableColumn<PurchaseEntry>[]>(() => [
+  {
+    accessorKey: 'createdAt',
+    header: t('token_history_paid_at'),
+    cell: ({ row }) => formatTime(row.original.createdAt),
+  },
+  {
+    accessorKey: 'period',
+    header: t('token_history_period'),
+    cell: ({ row }) => t(row.original.period === 'month' ? 'purchase_period_month' : 'purchase_period_year'),
+  },
+  {
+    accessorKey: 'amount',
+    header: t('token_history_amount'),
+    // A purchase from before the amount was kept has none to show.
+    cell: ({ row }) => (row.original.amount != null && row.original.currency
+      ? formatPrice(row.original.amount, row.original.currency, locale.value)
+      : '—'),
+  },
+  {
+    id: 'status',
+    header: t('token_history_payment_status'),
+    cell: ({ row }) => (row.original.revertedAt
+      ? t('token_history_payment_reverted', { date: formatTime(row.original.revertedAt) })
+      : t('token_history_payment_paid')),
+  },
+  {
+    id: 'dashboard',
+    header: '',
+    cell: ({ row }) => (row.original.dashboardUrl
+      ? h('a', {
+          href: row.original.dashboardUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          class: 'inline-flex items-center gap-1 text-sm text-primary hover:underline',
+        }, [
+          h(resolveComponent('UIcon') as any, { name: 'i-heroicons-arrow-top-right-on-square', class: 'size-4' }),
+          t('public_payment_admin_dashboard'),
+        ])
+      : null),
+  },
 ]);
 </script>
