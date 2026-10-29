@@ -11,7 +11,7 @@ import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, media, mediaGroups, tokenMediaUsage, tokenPurchases, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
 import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
-import { extendExpiry } from '../utils/purchase';
+import { purchaseExpiry } from '../utils/purchase';
 import { deleteTokensWhere } from '../utils/tokenDeletion';
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
 import { getActivationExpiry, getTokenInvalidReason, isTokenValid } from '../utils/tokenValidation';
@@ -600,10 +600,12 @@ export async function isTokenRenewable(tokenRow: Token): Promise<boolean> {
 export type PurchaseApplication = 'applied' | 'already_applied' | 'token_missing';
 
 /**
- * Extends a token by a paid period, at most once per payment. What was bought
- * is time, so the view limit goes: a paid month that closed after three views
- * would be a broken promise. Per-media counts of a group token stay, since
- * those views did happen — they just no longer limit anything.
+ * Gives a token the paid period, at most once per payment. The period counts
+ * from now, never on top of what was left: a token is only for sale once it
+ * ran out. What was bought is time, so the view limit goes: a paid month that
+ * closed after three views would be a broken promise. Per-media counts of a
+ * group token stay, since those views did happen — they just no longer limit
+ * anything.
  *
  * Runs as one synchronous transaction, so a retried webhook racing the return
  * page finds the other's row and leaves the token alone.
@@ -629,7 +631,7 @@ export function applyTokenPurchase(data: {
     if (!tokenRow) {
       return 'token_missing';
     }
-    const expiresAfter = extendExpiry(tokenRow.expiresAt, data.period, now);
+    const expiresAfter = purchaseExpiry(data.period, now);
     tx.insert(tokenPurchases).values({
       paymentId: data.paymentId,
       tokenId: tokenRow.id,

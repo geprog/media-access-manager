@@ -315,4 +315,20 @@ describe('payments of a token', () => {
     expect(renewed?.openPaymentId).toBeNull();
     expect(renewed?.openPaymentCheckoutUrl).toBeNull();
   });
+
+  it('counts the paid period from the purchase, not from a far end the views ran out before', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'used up',
+      usageLimit: 1,
+      expiresAt: new Date('2029-01-01T00:00:00Z'),
+    });
+    await validateAndConsumeToken(token);
+    const now = new Date('2026-03-15T12:00:00Z');
+
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_month', period: 'month', now });
+
+    // A month's price buys a month of unlimited views, not three years of them.
+    expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2026-04-15T12:00:00Z'));
+  });
 });

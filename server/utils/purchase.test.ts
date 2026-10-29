@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPaymentDescription,
   classifyPaymentStatus,
-  extendExpiry,
   getPurchaseOptions,
   isPurchasePeriod,
   parsePurchaseMetadata,
+  purchaseExpiry,
   toMollieLocale,
 } from './purchase';
 
@@ -31,32 +31,22 @@ describe('getPurchaseOptions', () => {
   });
 });
 
-describe('extendExpiry', () => {
+describe('purchaseExpiry', () => {
   const now = new Date('2026-03-10T12:00:00Z');
 
-  it('starts a lapsed token\'s new period now', () => {
-    const expired = new Date('2026-01-01T00:00:00Z');
-    expect(extendExpiry(expired, 'month', now)).toEqual(new Date('2026-04-10T12:00:00Z'));
-    expect(extendExpiry(expired, 'year', now)).toEqual(new Date('2027-03-10T12:00:00Z'));
-  });
-
-  it('adds on top of a window that is still open', () => {
-    const later = new Date('2026-03-20T12:00:00Z');
-    expect(extendExpiry(later, 'month', now)).toEqual(new Date('2026-04-20T12:00:00Z'));
-  });
-
-  it('starts now for a token that never had an expiry date', () => {
-    expect(extendExpiry(null, 'month', now)).toEqual(new Date('2026-04-10T12:00:00Z'));
+  it('counts the paid period from the purchase', () => {
+    expect(purchaseExpiry('month', now)).toEqual(new Date('2026-04-10T12:00:00Z'));
+    expect(purchaseExpiry('year', now)).toEqual(new Date('2027-03-10T12:00:00Z'));
   });
 
   it('ends a month bought on the 31st at the end of a shorter month', () => {
     const endOfJanuary = new Date('2026-01-31T12:00:00Z');
-    expect(extendExpiry(null, 'month', endOfJanuary)).toEqual(new Date('2026-02-28T12:00:00Z'));
+    expect(purchaseExpiry('month', endOfJanuary)).toEqual(new Date('2026-02-28T12:00:00Z'));
   });
 
   it('ends a year bought on a leap day on 28 February', () => {
     const leapDay = new Date('2028-02-29T12:00:00Z');
-    expect(extendExpiry(null, 'year', leapDay)).toEqual(new Date('2029-02-28T12:00:00Z'));
+    expect(purchaseExpiry('year', leapDay)).toEqual(new Date('2029-02-28T12:00:00Z'));
   });
 });
 

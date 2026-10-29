@@ -34,14 +34,14 @@ export function getPurchaseOptions(prices: PurchasePrices, currency: string): Pu
 }
 
 /**
- * The token's new end after a purchase. Buying while the old window is still
- * open adds on top of it, so nobody loses days by paying early; a lapsed or
- * undated token starts its period now. Calendar months, so a month bought on
- * 31 January ends with February.
+ * The token's new end after a purchase: the paid period, counted from the
+ * purchase itself. Never on top of a window still open — a token can only be
+ * bought once it ran out, by date or by views, and a used-up token with a far
+ * end would otherwise turn a month's price into unlimited views for years.
+ * Calendar months, so a month bought on 31 January ends with February.
  */
-export function extendExpiry(expiresAt: Date | null, period: PurchasePeriod, now: Date = new Date()): Date {
-  const base = expiresAt && expiresAt > now ? expiresAt : now;
-  return addUtcMonths(base, period === 'month' ? 1 : 12);
+export function purchaseExpiry(period: PurchasePeriod, now: Date = new Date()): Date {
+  return addUtcMonths(now, period === 'month' ? 1 : 12);
 }
 
 /**

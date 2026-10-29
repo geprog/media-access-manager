@@ -131,10 +131,12 @@ method cannot), so its expiry is what ends it.
 A purchase **extends the token the visitor already holds**. No new link, no
 new QR code — the one on their printout keeps working.
 
-- `expires_at` ← `max(now, expires_at) + 1 month | 1 year` (calendar month or
-  year; 31 January + 1 month is the end of February).
-  - Buying before the old window ended adds on top of it, so nobody loses days
-    by paying early.
+- `expires_at` ← `now + 1 month | 1 year` (calendar month or year; 31 January
+  plus one month is the end of February).
+  - Counted from the purchase, never on top of what was left. A token is only
+    for sale once it ran out, and the one case where something _is_ left — a
+    token whose views ran out before its date — would otherwise turn a
+    month's price into unlimited views until that date, years away perhaps.
 - `usage_limit` ← `null`. What was bought is time — "one month of access" —
   and a view limit left in place would close that month early. Group tokens'
   per-media counts therefore stop mattering too; they are kept, not reset,
@@ -345,9 +347,10 @@ Alternatives considered:
   read-then-update across the network has no lock, so a retried webhook racing
   the return page could still extend twice, and Mollie restricts which
   payments can be updated at all.
-- _Deriving the new expiry deterministically from the payment_ (e.g. "paid at
-  - period"): breaks the "buying early adds on top" rule and two purchases in a
-    row would overlap instead of adding up.
+- _Deriving the new expiry deterministically from the payment_ (e.g.
+  `paid at + period`): close to what is done now, but it would leave nothing
+  to put the token back to when the money goes back, and nothing to stop the
+  second webhook.
 
 Keeping the amount out of `token_purchases` costs nothing — revenue reporting
 is Mollie's dashboard, reachable from each payment via `adminUrl` in reverse.
@@ -361,10 +364,13 @@ the value was judged worth it, as the request suggested.
 **Clearing the usage limit.** The biggest product decision here. A view limit
 is sometimes a guard against passing a link around; a paid month without the
 limit loosens that guard. But "one month of access" that stops after three
-views would be a broken promise to a paying customer, and the date window
-already bounds how long a shared link is worth anything. If a limit per paid
-period is needed later, it becomes a third price field (`usage_limit_per_period`)
-and a reset of the counts, without changing the flow.
+views would be a broken promise to a paying customer, and the paid period
+bounds how long a shared link is worth anything — which is why the period
+counts from the purchase and not from a date the token still had: a
+view-limited token valid for years would otherwise sell years of unlimited
+views for a month's price. If a limit per paid period is needed later, it
+becomes a third price field (`usage_limit_per_period`) and a reset of the
+counts, without changing the flow.
 
 **Webhook-only vs. confirming on return.** Webhook-only would be simpler, but
 the visitor would land on "your access has ended" until the webhook arrived,
