@@ -1,7 +1,12 @@
 /**
  * The three calls of Mollie's Payments API this app makes, over Nuxt's own
- * `$fetch`. Mollie's SDK would add a legacy HTTP client for them and insists
- * on `https:`, which rules out the local stand-in the end-to-end tests use.
+ * `$fetch`. Mollie's legacy SDK (`@mollie/api-client`) adds a legacy HTTP
+ * client and insists on `https:`, which rules out the local stand-in the
+ * end-to-end tests use. Its generated successor (`mollie-api-typescript`)
+ * has neither problem, but it is a 13 MB dependency on zod for three calls.
+ * It also validates every response against its full schema, so the stand-in
+ * would have to return complete payments. Worth revisiting once this app
+ * needs more of the API (refunds, payment links, customers).
  *
  * @see https://docs.mollie.com/reference/payments-api
  */
