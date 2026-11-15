@@ -248,7 +248,7 @@
   "purchase_disabled": "Käufe sind für diese Installation ausgeschaltet, Besucher sehen daher noch keine Preise. Setzen Sie NUXT_MOLLIE_API_KEY, um sie einzuschalten.",
   "purchase_period_month": "1 Monat",
   "purchase_period_year": "1 Jahr",
-  "payment_notice_unapplied": "Eine Zahlung für „{description}“ ist eingegangen, aber der Link, für den sie war, existiert nicht mehr. Erstatten Sie sie in Mollie.",
+  "payment_notice_unapplied": "Eine Zahlung für „{description}“ ist eingegangen, hat aber nichts gekauft: Der Link, für den sie war, existiert nicht mehr oder war bereits wieder gültig. Erstatten Sie sie in Mollie.",
   "payment_notice_reverted": "Eine Zahlung für „{description}“ wurde erstattet oder zurückgebucht. Der damit gekaufte Zugang wurde entzogen.",
   "payment_notice_dismiss": "Ausblenden",
   "statistics_title": "Statistik",

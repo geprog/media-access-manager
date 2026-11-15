@@ -124,8 +124,9 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
   hour until Mollie expires it. Mollie is asked to cancel the replaced
   payment, which it refuses for one without a method (`isCancelable` is
   `false`), so that one is left to expire there; nothing leads to its checkout
-  any more but the visitor's own browser history, and were it paid after all,
-  the webhook still extends their token with it.
+  any more but the visitor's own browser history. Were it paid after all, the
+  webhook still extends their token with it — unless the token is valid again
+  by then, see [A payment that buys nothing](#a-payment-that-buys-nothing).
 - a bank transfer, `open` until the money arrives, shows "waiting for your
   bank transfer" and **Show payment details**, which is Mollie's page with the
   transfer data.
@@ -182,6 +183,28 @@ moved since — the visitor bought again after that period ran out, or an admin
 edited the token — the later state wins, and the purchase is merely marked.
 The admin is told either way (see §4).
 
+A later purchase that found the token exactly as this one left it takes over
+what this one remembered of the token before. Should its money go back too,
+the token returns to what it was before both, not to the end the first one
+had bought and no longer pays for.
+
+### A payment that buys nothing
+
+A paid payment only extends a token that needs it at that moment. Two cases
+leave a payment paid with nothing to extend:
+
+- the token was deleted while the payment was open;
+- the token is valid again: a payment the visitor replaced by one for another
+  period stays payable at Mollie and was paid as well, or a bank transfer
+  arrived after an admin had extended the token by hand.
+
+Applying the second would cut the access the token has down to this
+payment's period, and two purchases stacked on each other are what a payer
+charging both back could keep access through. So the payment is left
+unapplied, the token forgets it, and the admin is shown it to refund in
+Mollie (`unapplied` in `payment_notices`). It stays unapplied for good, also
+when Mollie calls about it again after the token ran out once more.
+
 The token is a single row that a batch owns, so extending one visitor's token
 never touches the others of that batch.
 
@@ -219,8 +242,8 @@ The app keeps one row per **paid** payment in `token_purchases`:
 | `reverted_at`        | when the money went back and the token was set back, `null` otherwise |
 
 And one row per payment an admin should look at, in `payment_notices`: a paid
-payment whose token was deleted meanwhile (`unapplied`, to be refunded in
-Mollie) and one whose money went back (`reverted`). It holds the payment id,
+payment whose token was deleted or valid again meanwhile (`unapplied`, to be
+refunded in Mollie) and one whose money went back (`reverted`). It holds the payment id,
 the kind, the payment's description — "{title} – 1 year access", the same
 line the checkout showed — and the Mollie dashboard link, until the admin
 dismisses it. Nothing about the payer.

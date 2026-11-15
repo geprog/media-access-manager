@@ -15,12 +15,13 @@ import {
 } from '../utils/purchase';
 import { getMediaGroupById } from './mediaGroupService';
 import { getMediaById } from './mediaService';
-import { recordPaymentNotice } from './paymentNoticeService';
+import { isPaymentUnapplied, recordPaymentNotice } from './paymentNoticeService';
 import {
   applyTokenPurchase,
   clearOpenPayment,
   findTokenById,
   findTokenByValue,
+  hasTokenPurchase,
   isTokenRenewable,
   revertTokenPurchase,
   setOpenPayment,
@@ -121,7 +122,8 @@ async function fetchPayment(mollie: MollieApi, paymentId: string): Promise<Molli
  * Brings the token in line with what Mollie says about one of its payments:
  * a paid one extends it, one that ended without money is no longer open, and
  * one whose money went back again is taken back. `null` when the payment
- * names a token that is gone.
+ * bought nothing: it names a token that is gone, or one that needed no
+ * renewal any more by the time the money arrived.
  */
 async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata): Promise<PurchaseStatus | null> {
   const status = classifyPaymentStatus(payment.status, payment.method ?? null);
@@ -137,7 +139,15 @@ async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata)
     if (revertTokenPurchase(payment.id) === 'reverted') {
       recordPaymentNotice({ paymentId: payment.id, kind: 'reverted', ...noticeDetails(payment) });
     }
+    // Nothing is left to pay or to wait for; a token still pointing here
+    // would lead every further purchase back to this payment.
+    clearOpenPayment(metadata.tokenId, payment.id);
     return 'reversed';
+  }
+  if (hasTokenPurchase(payment.id)) {
+    // Mollie calls again for a payment already applied, e.g. on a partial
+    // refund. The token may have changed in any way since.
+    return 'paid';
   }
   // The id and the value together: a token deleted and a new one issued with
   // the same value (practically impossible, but cheap to rule out) must not
@@ -147,6 +157,19 @@ async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata)
     // The visitor paid for nothing; the refund is done in Mollie, so the
     // admin is shown the way there.
     console.error(`Paid payment ${payment.id} refers to token ${metadata.tokenId}, which no longer exists.`);
+    recordPaymentNotice({ paymentId: payment.id, kind: 'unapplied', ...noticeDetails(payment) });
+    return null;
+  }
+  if (isPaymentUnapplied(payment.id) || !(await isTokenRenewable(tokenRow))) {
+    // The token got its access back some other way while this payment was
+    // open: by a second payment — one the visitor replaced stays payable at
+    // Mollie — or by an admin. Applying this one too would cut that access
+    // down to this period, and two purchases stacked on each other are what
+    // a payer charging both back could keep access through. It buys nothing
+    // and is the admin's to refund — for good, also once the token runs out
+    // again.
+    console.error(`Paid payment ${payment.id} refers to token ${metadata.tokenId}, which needs no renewal.`);
+    clearOpenPayment(tokenRow.id, payment.id);
     recordPaymentNotice({ paymentId: payment.id, kind: 'unapplied', ...noticeDetails(payment) });
     return null;
   }
@@ -271,7 +294,9 @@ export class PaymentInProgressError extends Error {}
  * Mollie is asked to cancel it where it says it can — a payment nobody has
  * tried to pay is not one of those — so it is usually left to expire at
  * Mollie on its own. Nothing leads there any more but the visitor's own
- * browser history, and paid after all it still extends their token.
+ * browser history. Paid after all it still extends their token, unless the
+ * payment that replaced it did so first: then it is shown to the admin to
+ * refund.
  */
 async function dropOpenPayment(mollie: MollieApi, tokenId: string, open: OpenPaymentState): Promise<void> {
   if (open.cancelable) {

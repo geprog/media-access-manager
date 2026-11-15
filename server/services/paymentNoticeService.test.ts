@@ -11,7 +11,7 @@ migrate(db, { migrationsFolder: path.resolve(process.cwd(), 'server', 'db', 'mig
 
 vi.mock('../utils/db', () => ({ useDb: () => db }));
 
-const { dismissPaymentNotice, listOpenPaymentNotices, recordPaymentNotice } = await import('./paymentNoticeService');
+const { dismissPaymentNotice, isPaymentUnapplied, listOpenPaymentNotices, recordPaymentNotice } = await import('./paymentNoticeService');
 
 beforeEach(() => {
   sqlite.prepare('DELETE FROM payment_notices').run();
@@ -35,5 +35,15 @@ describe('payment notices', () => {
     recordPaymentNotice({ paymentId: 'tr_1', kind: 'reverted', description: 'Yoga – 1 month access', dashboardUrl: null });
 
     expect(await listOpenPaymentNotices()).toHaveLength(1);
+  });
+
+  it('remembers a payment that bought nothing, also once its notice is dismissed', () => {
+    recordPaymentNotice({ paymentId: 'tr_nothing', kind: 'unapplied', description: 'Yoga – 1 month access', dashboardUrl: null });
+    recordPaymentNotice({ paymentId: 'tr_back', kind: 'reverted', description: 'Yoga – 1 month access', dashboardUrl: null });
+    dismissPaymentNotice('tr_nothing');
+
+    expect(isPaymentUnapplied('tr_nothing')).toBe(true);
+    expect(isPaymentUnapplied('tr_back')).toBe(false);
+    expect(isPaymentUnapplied('tr_unknown')).toBe(false);
   });
 });

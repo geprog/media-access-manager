@@ -293,6 +293,40 @@ test.describe('Buying access again', () => {
     await expect(notice).toHaveCount(0);
   });
 
+  test('a replaced payment paid after the other one buys nothing and is shown to the admin', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { mediaId, token } = await visitExpiredPricedMedia(page, title);
+
+    // The visitor begins the month, leaves Mollie's method list and takes the
+    // year instead. Mollie keeps the month payable all the same.
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const replaced = page.url().split('/checkout/')[1] ?? '';
+    await page.getByRole('button', { name: 'Leave' }).click();
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const paymentId = page.url().split('/checkout/')[1] ?? '';
+    expect(paymentId).not.toBe(replaced);
+
+    expect((await setStubPaymentStatus(request, paymentId, 'paid')).ok()).toBe(true);
+    expect((await postWebhook(request, paymentId)).status()).toBe(200);
+    // Then the month is paid too, from the browser history.
+    expect((await setStubPaymentStatus(request, replaced, 'paid')).ok()).toBe(true);
+    expect((await postWebhook(request, replaced)).status()).toBe(200);
+
+    // The year stands; the month neither shortens it nor stacks on it.
+    expectAboutAYearAhead(await readToken(page, mediaId, token));
+    const dialog = await openTokenHistory(page, mediaId, token);
+    await expect(dialog.getByRole('row').filter({ hasText: '1 year' })).toHaveCount(1);
+    await expect(dialog.getByRole('row').filter({ hasText: '1 month' })).toHaveCount(0);
+
+    await page.goto('/');
+    const notice = page.getByRole('alert').filter({ hasText: `${title} – 1 month access` });
+    await expect(notice).toContainText(/bought nothing/i);
+    await expect(notice.getByRole('link', { name: 'View payment in Mollie' }))
+      .toHaveAttribute('href', new RegExp(`/dashboard/payments/${replaced}$`));
+  });
+
   test('a canceled payment offers the purchase again', async ({ page }, testInfo) => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     const { mediaId, token } = await visitExpiredPricedMedia(page, title);

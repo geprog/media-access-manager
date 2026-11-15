@@ -671,6 +671,16 @@ export function applyTokenPurchase(data: {
   });
 }
 
+/** Whether this payment already extended a token, reverted since or not. */
+export function hasTokenPurchase(paymentId: string): boolean {
+  const rows = useDb()
+    .select({ paymentId: tokenPurchases.paymentId })
+    .from(tokenPurchases)
+    .where(eq(tokenPurchases.paymentId, paymentId))
+    .all();
+  return rows.length > 0;
+}
+
 export type PurchaseReversal = 'reverted' | 'superseded' | 'already_reverted' | 'unknown';
 
 /**
@@ -678,6 +688,11 @@ export type PurchaseReversal = 'reverted' | 'superseded' | 'already_reverted' | 
  * and view limit it had before — unless something moved its end since, a later
  * purchase or an admin, in which case that stands (`superseded`). Either way
  * the purchase is marked, so a repeated webhook changes nothing more.
+ *
+ * A later purchase that built on this one inherits what this one remembered
+ * of the token before. Otherwise, once its money goes back too, the token
+ * would return to the end this purchase had bought — access nobody paid for
+ * any more.
  */
 export function revertTokenPurchase(paymentId: string, now: Date = new Date()): PurchaseReversal {
   const db = useDb();
@@ -692,6 +707,17 @@ export function revertTokenPurchase(paymentId: string, now: Date = new Date()): 
     tx.update(tokenPurchases).set({ revertedAt: now }).where(eq(tokenPurchases.paymentId, paymentId)).run();
     const tokenRow = tx.select().from(tokens).where(eq(tokens.id, purchase.tokenId)).all()[0];
     if (!tokenRow || tokenRow.expiresAt?.getTime() !== purchase.expiresAfter.getTime()) {
+      // Only purchases that found the token exactly as this one left it: an
+      // admin's edit in between is not this purchase's to take back.
+      tx.update(tokenPurchases)
+        .set({ expiresBefore: purchase.expiresBefore, usageLimitBefore: purchase.usageLimitBefore })
+        .where(and(
+          eq(tokenPurchases.tokenId, purchase.tokenId),
+          isNull(tokenPurchases.revertedAt),
+          eq(tokenPurchases.expiresBefore, purchase.expiresAfter),
+          isNull(tokenPurchases.usageLimitBefore),
+        ))
+        .run();
       return 'superseded';
     }
     tx.update(tokens)

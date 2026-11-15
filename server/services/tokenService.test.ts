@@ -28,6 +28,7 @@ const {
   findBatchById,
   findTokenByValue,
   getTokenHistory,
+  hasTokenPurchase,
   listRecentViews,
   listTokensByBatchId,
   listViewsBetween,
@@ -407,5 +408,36 @@ describe('payments of a token', () => {
 
     expect(revertTokenPurchase('tr_old')).toBe('superseded');
     expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2027-05-01T12:00:00Z'));
+  });
+
+  it('returns to the state before both of two purchases once the money of both went back', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'charged back twice',
+      usageLimit: 3,
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    const now = new Date('2026-03-15T12:00:00Z');
+    // Two payments paid one after the other: the month builds on the year.
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_year', period: 'year', now, ...paid });
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_month', period: 'month', now, ...paid });
+
+    // The year goes back first. The month still stands, but must no longer
+    // fall back on the year once it goes back too.
+    expect(revertTokenPurchase('tr_year', now)).toBe('superseded');
+    expect((await findTokenByValue(token))?.expiresAt).toEqual(new Date('2026-04-15T12:00:00Z'));
+
+    expect(revertTokenPurchase('tr_month', now)).toBe('reverted');
+    const reverted = await findTokenByValue(token);
+    expect(reverted?.expiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
+    expect(reverted?.usageLimit).toBe(3);
+  });
+
+  it('knows which payments it has applied', async () => {
+    const { id } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_applied', period: 'month', ...paid });
+
+    expect(hasTokenPurchase('tr_applied')).toBe(true);
+    expect(hasTokenPurchase('tr_other')).toBe(false);
   });
 });
