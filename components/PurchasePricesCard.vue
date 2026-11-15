@@ -93,6 +93,9 @@ async function save() {
     toast.add({ title: t('purchase_saved'), color: 'success' });
     emit('saved');
   }
+  catch {
+    toast.add({ title: t('purchase_save_failed'), color: 'error' });
+  }
   finally {
     saving.value = false;
   }

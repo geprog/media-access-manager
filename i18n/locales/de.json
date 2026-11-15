@@ -244,6 +244,7 @@
   "purchase_price_placeholder": "Nicht angeboten",
   "purchase_save": "Preise speichern",
   "purchase_saved": "Preise gespeichert",
+  "purchase_save_failed": "Die Preise konnten nicht gespeichert werden. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
   "purchase_disabled": "Käufe sind für diese Installation ausgeschaltet, Besucher sehen daher noch keine Preise. Setzen Sie NUXT_MOLLIE_API_KEY, um sie einzuschalten.",
   "purchase_period_month": "1 Monat",
   "purchase_period_year": "1 Jahr",

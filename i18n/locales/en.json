@@ -244,6 +244,7 @@
   "purchase_price_placeholder": "Not offered",
   "purchase_save": "Save prices",
   "purchase_saved": "Prices saved",
+  "purchase_save_failed": "Saving the prices failed. Please reload the page and try again.",
   "purchase_disabled": "Purchasing is switched off for this deployment, so visitors see no prices yet. Set NUXT_MOLLIE_API_KEY to turn it on.",
   "purchase_period_month": "1 month",
   "purchase_period_year": "1 year",
