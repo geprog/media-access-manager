@@ -113,7 +113,10 @@ const PERIOD_DESCRIPTIONS: Record<string, Record<PurchasePeriod, string>> = {
 const MOLLIE_DESCRIPTION_MAX_LENGTH = 255;
 
 export function buildPaymentDescription(title: string, period: PurchasePeriod, locale: string): string {
-  const suffix = ` – ${(PERIOD_DESCRIPTIONS[locale] ?? PERIOD_DESCRIPTIONS.en!)[period]}`;
+  // The language comes from the request: only the table's own entries count,
+  // not what every object inherits, like `constructor`.
+  const descriptions = Object.hasOwn(PERIOD_DESCRIPTIONS, locale) ? PERIOD_DESCRIPTIONS[locale]! : PERIOD_DESCRIPTIONS.en!;
+  const suffix = ` – ${descriptions[period]}`;
   const room = MOLLIE_DESCRIPTION_MAX_LENGTH - suffix.length;
   const name = title.length > room ? `${title.slice(0, room - 1)}…` : title;
   return `${name}${suffix}`;
@@ -126,7 +129,7 @@ const MOLLIE_LOCALES: Record<string, string> = {
 
 /** Mollie's checkout language for the app's, `undefined` to let Mollie pick. */
 export function toMollieLocale(locale: string): string | undefined {
-  return MOLLIE_LOCALES[locale];
+  return Object.hasOwn(MOLLIE_LOCALES, locale) ? MOLLIE_LOCALES[locale] : undefined;
 }
 
 /**

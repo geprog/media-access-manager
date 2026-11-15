@@ -123,6 +123,11 @@ describe('buildPaymentDescription', () => {
     expect(buildPaymentDescription('Yoga', 'year', 'fr')).toBe('Yoga – 1 year access');
   });
 
+  it('takes a language named like something every object has for an unknown one', () => {
+    expect(buildPaymentDescription('Yoga', 'year', 'constructor')).toBe('Yoga – 1 year access');
+    expect(buildPaymentDescription('Yoga', 'month', '__proto__')).toBe('Yoga – 1 month access');
+  });
+
   it('stays within Mollie\'s 255 characters', () => {
     const description = buildPaymentDescription('x'.repeat(300), 'year', 'en');
     expect(description.length).toBeLessThanOrEqual(255);
@@ -135,6 +140,8 @@ describe('toMollieLocale', () => {
     expect(toMollieLocale('de')).toBe('de_DE');
     expect(toMollieLocale('en')).toBe('en_US');
     expect(toMollieLocale('xx')).toBeUndefined();
+    expect(toMollieLocale('__proto__')).toBeUndefined();
+    expect(toMollieLocale('toString')).toBeUndefined();
   });
 });
 
