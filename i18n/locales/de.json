@@ -221,6 +221,7 @@
   "public_purchase_error": "Die Zahlung konnte nicht gestartet werden. Bitte versuchen Sie es später erneut.",
   "public_purchase_secure_hint": "Sie bezahlen sicher über unseren Zahlungsanbieter Mollie.",
   "public_purchase_open": "Sie haben eine Zahlung begonnen, die noch nicht abgeschlossen ist. Setzen Sie sie fort, um zu bezahlen oder eine andere Zahlungsart zu wählen – andernfalls verfällt sie nach einiger Zeit von selbst.",
+  "public_purchase_open_switch": "Sie haben eine Zahlung begonnen, die noch nicht abgeschlossen ist. Setzen Sie sie fort, um zu bezahlen, oder wählen Sie stattdessen eine andere Laufzeit – die begonnene entfällt dann.",
   "public_purchase_processing": "Ihre Zahlung wird bearbeitet. Ihr Link funktioniert wieder, sobald sie eingegangen ist.",
   "public_purchase_transfer": "Wir warten auf Ihre Überweisung. Ihr Link funktioniert wieder, sobald das Geld eingegangen ist – das kann einige Tage dauern.",
   "public_purchase_continue": "Zahlung fortsetzen",

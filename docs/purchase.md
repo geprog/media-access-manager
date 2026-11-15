@@ -67,13 +67,13 @@ first asks `POST /api/purchase/{token}/confirm` about the token's open payment
 and only then loads the content. Without an open payment that is a database
 lookup, no call to Mollie, behind the page's usual loader:
 
-| Payment status                  | Page shows                                                     |
-| ------------------------------- | -------------------------------------------------------------- |
-| `paid`                          | the content right away                                         |
-| `pending`, `authorized`         | "payment is being processed", checking again every few seconds |
-| `open` (left without paying)    | "you started a payment" with **Continue payment**              |
-| `open` by bank transfer         | "waiting for your bank transfer" with **Show payment details** |
-| `canceled`, `expired`, `failed` | "payment was not completed" above the purchase options again   |
+| Payment status                  | Page shows                                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `paid`                          | the content right away                                                                              |
+| `pending`, `authorized`         | "payment is being processed", checking again every few seconds                                      |
+| `open` (left without paying)    | "you started a payment" with **Continue payment**, and the other periods while no method was picked |
+| `open` by bank transfer         | "waiting for your bank transfer" with **Show payment details**                                      |
+| `canceled`, `expired`, `failed` | "payment was not completed" above the purchase options again                                        |
 
 Only `pending` and `authorized` hold the page back: Mollie finishes those
 within moments. A bank transfer stays `open` for days, and waiting for it on
@@ -116,6 +116,16 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
 - the purchase buttons give way to **Continue payment**, which leads to that
   payment's checkout (the one stored at creation, see §3), where the visitor pays, tries another method or leaves
   it to expire. Starting a second payment instead could have them pay twice.
+- unless nobody has tried to pay it: a payment still `open` for which the
+  visitor picked no method at Mollie showed them nothing but the list of
+  methods, so no money can be on its way. The other periods stay on offer
+  beside **Continue payment**, and picking one replaces that payment — the
+  visitor who clicked the wrong price is not held to it for the quarter of an
+  hour until Mollie expires it. Mollie is asked to cancel the replaced
+  payment, which it refuses for one without a method (`isCancelable` is
+  `false`), so that one is left to expire there; nothing leads to its checkout
+  any more but the visitor's own browser history, and were it paid after all,
+  the webhook still extends their token with it.
 - a bank transfer, `open` until the money arrives, shows "waiting for your
   bank transfer" and **Show payment details**, which is Mollie's page with the
   transfer data.
@@ -132,8 +142,10 @@ local setup, or a webhook lost — the token page asks Mollie about the payment
 whenever it loads, so expiry is noticed there as well; and a payment paid
 without the visitor coming back is applied the same way.
 
-Beyond the cancelable ones, an open payment cannot be ended on the visitor's
-behalf: Mollie's expiry is what ends it.
+Beyond the cancelable ones, and the untouched ones a different period
+replaces, an open payment cannot be ended on the visitor's behalf: Mollie's
+expiry is what ends it. Once they have tried to pay, that is the right
+answer — the attempt may still go through.
 
 ---
 

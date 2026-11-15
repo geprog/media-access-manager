@@ -5,7 +5,8 @@
     </h2>
     <!-- Mollie keeps a payment open after a failed or canceled attempt, until
          it expires. Starting another one could have the visitor pay twice, so
-         the one they began is continued instead, where they can try again. -->
+         the one they began is continued instead, where they can try again —
+         unless nobody has tried to pay it, when another period replaces it. -->
     <template v-if="openPayment">
       <p class="text-sm text-muted">
         {{ openPaymentText }}
@@ -14,30 +15,18 @@
         v-if="openPayment.resumable"
         icon="i-heroicons-arrow-right"
         size="lg"
-        :loading="pendingPeriod !== null"
-        :disabled="canceling"
+        :loading="pendingPeriod === openPayment.period"
+        :disabled="canceling || (pendingPeriod !== null && pendingPeriod !== openPayment.period)"
         :label="openPayment.status === 'open' ? $t('public_purchase_continue') : $t('public_purchase_details')"
         @click="purchase(openPayment.period)"
-      />
-      <!-- A bank transfer stays open for days. Where Mollie lets it be
-           canceled, the visitor need not wait them out to pay another way. -->
-      <UButton
-        v-if="openPayment.cancelable"
-        variant="link"
-        color="neutral"
-        icon="i-heroicons-x-mark"
-        :loading="canceling"
-        :disabled="pendingPeriod !== null"
-        :label="$t('public_purchase_cancel')"
-        @click="cancel"
       />
     </template>
     <p v-else class="text-sm text-muted">
       {{ $t('public_purchase_intro') }}
     </p>
-    <div v-if="!openPayment" class="flex flex-wrap justify-center gap-2">
+    <div v-if="offeredOptions.length" class="flex flex-wrap justify-center gap-2">
       <UButton
-        v-for="option in options"
+        v-for="option in offeredOptions"
         :key="option.period"
         icon="i-heroicons-shopping-cart"
         size="lg"
@@ -48,6 +37,18 @@
         @click="purchase(option.period)"
       />
     </div>
+    <!-- A bank transfer stays open for days. Where Mollie lets it be
+         canceled, the visitor need not wait them out to pay another way. -->
+    <UButton
+      v-if="openPayment?.cancelable"
+      variant="link"
+      color="neutral"
+      icon="i-heroicons-x-mark"
+      :loading="canceling"
+      :disabled="pendingPeriod !== null"
+      :label="$t('public_purchase_cancel')"
+      @click="cancel"
+    />
     <UAlert
       v-if="failed"
       color="error"
@@ -83,6 +84,8 @@ export interface OpenPayment {
   resumable: boolean
   /** Whether Mollie lets it be canceled, so another payment can be started. */
   cancelable: boolean
+  /** Whether picking another period starts a fresh payment instead of this one. */
+  replaceable: boolean
 }
 
 const props = defineProps<{
@@ -98,10 +101,23 @@ const { t, locale } = useI18n();
 
 const pendingPeriod = ref<PurchaseOption['period'] | null>(null);
 
+/**
+ * The periods still open to the visitor: all of them while they began no
+ * payment, and otherwise the ones that would replace it — its own period is
+ * what **Continue payment** leads to.
+ */
+const offeredOptions = computed(() => {
+  const open = props.openPayment;
+  if (!open) {
+    return props.options;
+  }
+  return open.replaceable ? props.options.filter(option => option.period !== open.period) : [];
+});
+
 const openPaymentText = computed(() => {
   switch (props.openPayment?.status) {
     case 'open':
-      return t('public_purchase_open');
+      return offeredOptions.value.length ? t('public_purchase_open_switch') : t('public_purchase_open');
     case 'transfer':
       return t('public_purchase_transfer');
     default:

@@ -221,6 +221,7 @@
   "public_purchase_error": "The payment could not be started. Please try again later.",
   "public_purchase_secure_hint": "You pay securely with our payment provider Mollie.",
   "public_purchase_open": "You started a payment that is not finished yet. Continue it to pay or to try another payment method – if you leave it, it expires on its own after a while.",
+  "public_purchase_open_switch": "You started a payment that is not finished yet. Continue it to pay, or pick a different duration instead – the one you began then falls away.",
   "public_purchase_processing": "Your payment is being processed. Your link works again as soon as it has arrived.",
   "public_purchase_transfer": "We are waiting for your bank transfer. Your link works again as soon as the money has arrived – this can take a few days.",
   "public_purchase_continue": "Continue payment",

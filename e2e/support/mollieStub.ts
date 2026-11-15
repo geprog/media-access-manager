@@ -83,8 +83,9 @@ createServer(async (request, response) => {
     return send(response, 200, payment);
   }
 
-  // Mollie's hosted checkout, reduced to the outcomes a test needs. "Back" is
-  // Mollie's link back to the shop, which leaves the payment open.
+  // Mollie's hosted checkout, reduced to the outcomes a test needs. "Back" and
+  // "Leave" are Mollie's links back to the shop, which leave the payment open —
+  // after a failed attempt and from the untouched method list respectively.
   if (first === 'checkout' && second) {
     const payment = payments.get(second);
     if (!payment) {
@@ -103,9 +104,11 @@ createServer(async (request, response) => {
         // the transfer details.
         Object.assign(payment, { method: 'banktransfer', isCancelable: true });
       }
-      else {
+      else if (id !== 'leave') {
         // Like Mollie after a failed attempt: still open, but the API no longer
-        // hands out the checkout link — the page itself keeps working.
+        // hands out the checkout link — the page itself keeps working. "Leave"
+        // is the other way back: the visitor picked no method at all, so the
+        // payment stays as it was created.
         payment.method = 'paypal';
         delete payment._links.checkout;
       }
@@ -118,7 +121,8 @@ createServer(async (request, response) => {
       <form method="post" action="/checkout/${payment.id}/pay"><button>Pay</button></form>
       <form method="post" action="/checkout/${payment.id}/cancel"><button>Cancel</button></form>
       <form method="post" action="/checkout/${payment.id}/transfer"><button>Bank transfer</button></form>
-      <form method="post" action="/checkout/${payment.id}/back"><button>Back</button></form>`);
+      <form method="post" action="/checkout/${payment.id}/back"><button>Back</button></form>
+      <form method="post" action="/checkout/${payment.id}/leave"><button>Leave</button></form>`);
   }
 
   if (first !== 'v2' || second !== 'payments' || action) {

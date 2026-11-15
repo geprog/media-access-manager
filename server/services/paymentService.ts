@@ -9,6 +9,7 @@ import {
   getPurchaseOptions,
   isPaymentRecent,
   isPaymentReversed,
+  isPaymentUnattempted,
   parsePurchaseMetadata,
   toMollieLocale,
 } from '../utils/purchase';
@@ -86,6 +87,13 @@ export interface OpenPayment {
    * while the money has not arrived — the way out of waiting days for it.
    */
   cancelable: boolean
+  /**
+   * Whether picking a different period starts a fresh payment instead of
+   * leading back to this one. True while nobody has tried to pay it, so a
+   * visitor who clicked the wrong price is not held to it until Mollie lets
+   * it expire.
+   */
+  replaceable: boolean
 }
 
 export interface PurchaseOffer {
@@ -163,6 +171,8 @@ interface OpenPaymentState {
   period: PurchasePeriod
   checkoutUrl: string | null
   dashboardUrl: string | null
+  /** `null` while the visitor picked none at Mollie's checkout. */
+  method: string | null
   cancelable: boolean
   /** Started a few minutes ago at most: worth waiting for while it is processed. */
   recent: boolean
@@ -197,6 +207,7 @@ async function refreshOpenPayment(mollie: MollieApi, tokenRow: Token): Promise<O
     period: metadata.period,
     checkoutUrl,
     dashboardUrl: payment._links.dashboard?.href ?? null,
+    method: payment.method ?? null,
     cancelable: !!payment.isCancelable,
     recent: isPaymentRecent(payment.createdAt),
   };
@@ -233,7 +244,13 @@ export async function getPurchaseOffer(tokenRow: Token): Promise<PurchaseOffer> 
   return {
     options,
     openPayment: isOngoing(open)
-      ? { period: open.period, status: open.status, resumable: !!open.checkoutUrl, cancelable: open.cancelable }
+      ? {
+          period: open.period,
+          status: open.status,
+          resumable: !!open.checkoutUrl,
+          cancelable: open.cancelable,
+          replaceable: isPaymentUnattempted(open.status, open.method),
+        }
       : null,
   };
 }
@@ -250,12 +267,34 @@ export class PurchaseUnavailableError extends Error {}
 export class PaymentInProgressError extends Error {}
 
 /**
+ * Lets go of the payment a visitor replaced with one for another period.
+ * Mollie is asked to cancel it where it says it can — a payment nobody has
+ * tried to pay is not one of those — so it is usually left to expire at
+ * Mollie on its own. Nothing leads there any more but the visitor's own
+ * browser history, and paid after all it still extends their token.
+ */
+async function dropOpenPayment(mollie: MollieApi, tokenId: string, open: OpenPaymentState): Promise<void> {
+  if (open.cancelable) {
+    try {
+      await mollie.cancelPayment(open.id);
+    }
+    catch (error) {
+      console.error(`Failed to cancel the replaced payment ${open.id}:`, error);
+    }
+  }
+  clearOpenPayment(tokenId, open.id);
+}
+
+/**
  * Returns where to send the visitor to pay for renewing a token. While a
  * payment they started is still open, that is its checkout, where they can
  * try again — Mollie keeps a payment open after a failed or canceled attempt,
- * and a second payment could end up paid twice. Otherwise a new payment is
- * created, at the target's price at this moment; the request only names the
- * period.
+ * and a second payment could end up paid twice. Asking for another period
+ * than that payment is for is the one case that replaces it, and only while
+ * nobody has tried to pay it: a visitor who picked the wrong price, left
+ * Mollie's method list and came back is not held to it until it expires.
+ * Otherwise a new payment is created, at the target's price at this moment;
+ * the request only names the period.
  */
 export async function startPurchase(data: {
   tokenValue: string
@@ -277,10 +316,15 @@ export async function startPurchase(data: {
     throw new PurchaseUnavailableError();
   }
   if (isOngoing(open)) {
-    if (!open.checkoutUrl) {
-      throw new PaymentInProgressError();
+    // Asking for the period they began leads back to that payment; asking for
+    // another one replaces it, as long as nobody has tried to pay it.
+    if (open.period === data.period || !isPaymentUnattempted(open.status, open.method)) {
+      if (!open.checkoutUrl) {
+        throw new PaymentInProgressError();
+      }
+      return { checkoutUrl: open.checkoutUrl };
     }
-    return { checkoutUrl: open.checkoutUrl };
+    await dropOpenPayment(mollie, tokenRow.id, open);
   }
   const target = await getPurchaseTarget(tokenRow);
   const option = target?.options.find(item => item.period === data.period);

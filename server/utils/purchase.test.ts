@@ -5,6 +5,7 @@ import {
   getPurchaseOptions,
   isPaymentRecent,
   isPaymentReversed,
+  isPaymentUnattempted,
   isPurchasePeriod,
   parsePurchaseMetadata,
   purchaseExpiry,
@@ -155,5 +156,25 @@ describe('classifyPaymentStatus', () => {
     // A bank transfer stays open until the money arrives, days later — not
     // something to wait for on the page, unlike a payment being processed.
     expect(classifyPaymentStatus('open', 'banktransfer')).toBe('transfer');
+  });
+});
+
+describe('isPaymentUnattempted', () => {
+  it('is true while the visitor picked no method at Mollie', () => {
+    // Nothing but the method picker was shown: no money can be on its way.
+    expect(isPaymentUnattempted('open', null)).toBe(true);
+  });
+
+  it('is false once the visitor picked a method', () => {
+    // A failed card attempt leaves the payment open, and the attempt may yet
+    // go through: a second payment could have them pay twice.
+    expect(isPaymentUnattempted('open', 'creditcard')).toBe(false);
+    expect(isPaymentUnattempted('transfer', 'banktransfer')).toBe(false);
+  });
+
+  it('is false for a payment that is no longer the visitor\'s to redirect', () => {
+    expect(isPaymentUnattempted('pending', null)).toBe(false);
+    expect(isPaymentUnattempted('paid', 'creditcard')).toBe(false);
+    expect(isPaymentUnattempted('failed', null)).toBe(false);
   });
 });

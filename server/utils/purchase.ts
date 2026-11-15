@@ -153,6 +153,18 @@ export function classifyPaymentStatus(status: string, method: string | null): Pu
   return ['pending', 'authorized'].includes(status) ? 'pending' : 'failed';
 }
 
+/**
+ * Whether nobody has tried to pay this payment yet: it is still `open` and the
+ * visitor picked no method at Mollie, so its checkout showed nothing but the
+ * list of methods and no money can be on its way. Such a payment stands in
+ * the way of nothing — asking for another period replaces it. Once a method
+ * was picked, the attempt can still go through, and a second payment could
+ * have the visitor pay twice.
+ */
+export function isPaymentUnattempted(status: PurchaseStatus, method: string | null): boolean {
+  return status === 'open' && !method;
+}
+
 /** The parts of a Mollie payment that say whether its money went back. */
 export interface ReversiblePayment {
   amount: { value: string, currency: string }
