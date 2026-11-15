@@ -10,7 +10,7 @@ import { and, desc, eq, getTableColumns, gte, isNull, lte, sql } from 'drizzle-o
 import { getEditedValidity } from '~/utils/accessWindow';
 import { batches, media, mediaGroups, tokenMediaUsage, tokenPurchases, tokens, tokenViews } from '../db/schema';
 import { generateId, useDb } from '../utils/db';
-import { getGroupMediaAccess, getGroupWindowReason } from '../utils/groupAccess';
+import { getGroupMediaAccess, getGroupWindowReason, isGroupAccessRenewable } from '../utils/groupAccess';
 import { purchaseExpiry } from '../utils/purchase';
 import { deleteTokensWhere } from '../utils/tokenDeletion';
 import { getTokenSettingsColumns } from '../utils/tokenSettings';
@@ -597,13 +597,16 @@ export async function isTokenRenewable(tokenRow: Token): Promise<boolean> {
     const reason = getTokenInvalidReason(tokenRow);
     return reason === 'expired' || reason === 'usage_limit_reached';
   }
-  const windowReason = getGroupWindowReason(tokenRow);
-  if (windowReason) {
-    return windowReason === 'expired';
+  if (getGroupWindowReason(tokenRow)) {
+    // Closed as a whole: the media need not be looked at.
+    return isGroupAccessRenewable(tokenRow, []);
   }
   const access = await getGroupTokenAccess(tokenRow.token);
-  return !!access?.media.some(entry => entry.blockedBy === 'usage_limit_reached');
+  return !!access && isGroupAccessRenewable(tokenRow, access.media);
 }
+
+const NO_OPEN_PAYMENT = { openPaymentId: null, openPaymentCheckoutUrl: null };
+const NO_PARKED_PAYMENT = { parkedPaymentId: null, parkedPaymentCheckoutUrl: null };
 
 export type PurchaseApplication = 'applied' | 'already_applied' | 'token_missing';
 
@@ -658,12 +661,12 @@ export function applyTokenPurchase(data: {
       createdAt: now,
     }).run();
     // The paid payment is no longer one to lead the visitor back to.
-    const paidOpenPayment = tokenRow.openPaymentId === data.paymentId;
     tx.update(tokens)
       .set({
         expiresAt: expiresAfter,
         usageLimit: null,
-        ...(paidOpenPayment ? { openPaymentId: null, openPaymentCheckoutUrl: null } : {}),
+        ...(tokenRow.openPaymentId === data.paymentId ? NO_OPEN_PAYMENT : {}),
+        ...(tokenRow.parkedPaymentId === data.paymentId ? NO_PARKED_PAYMENT : {}),
       })
       .where(eq(tokens.id, tokenRow.id))
       .run();
@@ -745,15 +748,64 @@ export function setOpenPayment(tokenId: string, paymentId: string, checkoutUrl: 
 }
 
 /**
- * Forgets the token's open payment once Mollie reports it over. Only that very
- * payment: a late webhook for an older one must not drop a newer payment.
+ * Forgets one of the token's payments once Mollie reports it over, the open
+ * one or the one set aside. Only that very payment: a late webhook for an
+ * older one must not drop a newer payment.
  */
 export function clearOpenPayment(tokenId: string, paymentId: string) {
-  useDb()
+  const db = useDb();
+  db.transaction((tx) => {
+    tx.update(tokens)
+      .set(NO_OPEN_PAYMENT)
+      .where(and(eq(tokens.id, tokenId), eq(tokens.openPaymentId, paymentId)))
+      .run();
+    tx.update(tokens)
+      .set(NO_PARKED_PAYMENT)
+      .where(and(eq(tokens.id, tokenId), eq(tokens.parkedPaymentId, paymentId)))
+      .run();
+  });
+}
+
+/**
+ * Sets the token's open payment aside, so the visitor can start one for the
+ * other period and still find this one again by asking for its period. Takes
+ * the place of whatever was set aside before. `false` when the open payment
+ * is no longer this one, e.g. another request got there first.
+ */
+export function parkOpenPayment(tokenId: string, paymentId: string): boolean {
+  const { changes } = useDb()
     .update(tokens)
-    .set({ openPaymentId: null, openPaymentCheckoutUrl: null })
+    .set({
+      parkedPaymentId: tokens.openPaymentId,
+      parkedPaymentCheckoutUrl: tokens.openPaymentCheckoutUrl,
+      ...NO_OPEN_PAYMENT,
+    })
     .where(and(eq(tokens.id, tokenId), eq(tokens.openPaymentId, paymentId)))
     .run();
+  return changes > 0;
+}
+
+/**
+ * Lets the open payment and the one set aside trade places: the visitor
+ * asked for the period of the one set aside again. `false` when either is no
+ * longer the one named, e.g. another request got there first.
+ */
+export function swapOpenPayment(tokenId: string, openPaymentId: string, parkedPaymentId: string): boolean {
+  const { changes } = useDb()
+    .update(tokens)
+    .set({
+      openPaymentId: tokens.parkedPaymentId,
+      openPaymentCheckoutUrl: tokens.parkedPaymentCheckoutUrl,
+      parkedPaymentId: tokens.openPaymentId,
+      parkedPaymentCheckoutUrl: tokens.openPaymentCheckoutUrl,
+    })
+    .where(and(
+      eq(tokens.id, tokenId),
+      eq(tokens.openPaymentId, openPaymentId),
+      eq(tokens.parkedPaymentId, parkedPaymentId),
+    ))
+    .run();
+  return changes > 0;
 }
 
 export async function findTokenById(tokenId: string) {

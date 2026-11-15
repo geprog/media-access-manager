@@ -121,12 +121,15 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
   methods, so no money can be on its way. The other periods stay on offer
   beside **Continue payment**, and picking one replaces that payment — the
   visitor who clicked the wrong price is not held to it for the quarter of an
-  hour until Mollie expires it. Mollie is asked to cancel the replaced
-  payment, which it refuses for one without a method (`isCancelable` is
-  `false`), so that one is left to expire there; nothing leads to its checkout
-  any more but the visitor's own browser history. Were it paid after all, the
-  webhook still extends their token with it — unless the token is valid again
-  by then, see [A payment that buys nothing](#a-payment-that-buys-nothing).
+  hour until Mollie expires it. Mollie refuses to cancel a payment without a
+  method (`isCancelable` is `false`), so the replaced one stays payable until
+  Mollie expires it. The token keeps it aside, and picking its period again
+  leads back to it instead of creating yet another payment: however often
+  the visitor switches, Mollie holds no more than one payment per period for
+  the token. Were the one set aside paid after all, from the visitor's
+  browser history, the webhook still extends their token with it — unless the
+  token is valid again by then, see
+  [A payment that buys nothing](#a-payment-that-buys-nothing).
 - a bank transfer, `open` until the money arrives, shows "waiting for your
   bank transfer" and **Show payment details**, which is Mollie's page with the
   transfer data.
@@ -254,7 +257,9 @@ it, so buying again leads back to it. The URL is kept because Mollie's API
 stops returning `_links.checkout` once an attempt failed or was canceled,
 while the page itself still lets the visitor try again. Both are cleared as
 soon as Mollie reports the payment over; one that expired leaves nothing
-behind.
+behind. A payment replaced by one for the other period moves to
+`tokens.parked_payment_id` and `tokens.parked_payment_checkout_url`, where
+picking its period again finds it, and is cleared the same way.
 
 A payment id is an opaque reference. It says nothing about who paid; only
 someone with the Mollie account can look behind it, and that is where the data
@@ -265,7 +270,10 @@ belongs anyway.
 - **`description`** — shown to the customer on the checkout page and, as far as
   the payment method allows, on their bank statement:
   `"{media title | group name} – 1 year access"`, in the visitor's language.
-  Truncated to Mollie's 255 characters.
+  The period's text comes from the app's translation files
+  (`purchase_payment_description_month` / `_year`), which the server reads as
+  Nitro server assets; English where a language lacks it. Truncated to
+  Mollie's 255 characters.
 - **`metadata`** — visible in the Mollie dashboard, for internal analysis:
 
   ```json

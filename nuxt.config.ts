@@ -1,4 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { fileURLToPath } from 'node:url';
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-01-27',
@@ -109,6 +110,12 @@ export default defineNuxtConfig({
   },
   typescript: {
     strict: true,
+  },
+  nitro: {
+    // The server names the bought period on Mollie's checkout in the visitor's
+    // language, from the same translation files as the page. Read as plain
+    // JSON: what `@nuxtjs/i18n` imports of them is compiled for vue-i18n.
+    serverAssets: [{ baseName: 'locales', dir: fileURLToPath(new URL('./i18n/locales', import.meta.url)) }],
   },
   i18n: {
     locales: [

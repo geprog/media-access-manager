@@ -430,6 +430,33 @@ test.describe('Buying access again', () => {
     expectAboutAYearAhead(await readToken(page, mediaId, token));
   });
 
+  test('switching back and forth between periods reuses the payments already started', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+    const before = (await fetchStubPayments(request)).length;
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const month = page.url().split('/checkout/')[1] ?? '';
+    await page.getByRole('button', { name: 'Leave' }).click();
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const year = page.url().split('/checkout/')[1] ?? '';
+    expect(year).not.toBe(month);
+
+    // Back to the month, and to the year once more: each period leads to the
+    // payment begun for it, so however often the visitor switches, Mollie
+    // holds no more than one payment per period.
+    await page.getByRole('button', { name: 'Leave' }).click();
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(`**/checkout/${month}`);
+    await page.goto(`/${token}`);
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(`**/checkout/${year}`);
+
+    expect((await fetchStubPayments(request)).length - before).toBe(2);
+  });
+
   test('offers buying again once Mollie lets an open payment expire', async ({ page, request }, testInfo) => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     const { token } = await visitExpiredPricedMedia(page, title);

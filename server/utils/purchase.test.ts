@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildPaymentDescription,
   classifyPaymentStatus,
+  describePurchasePeriod,
   getPurchaseOptions,
   isPaymentRecent,
   isPaymentReversed,
@@ -113,23 +116,35 @@ describe('parsePurchaseMetadata', () => {
   });
 });
 
+describe('describePurchasePeriod', () => {
+  const en = { purchase_payment_description_month: '1 month access', purchase_payment_description_year: '1 year access' };
+  const de = { purchase_payment_description_year: 'Zugang für 1 Jahr' };
+
+  it('names the period in the visitor\'s language', () => {
+    expect(describePurchasePeriod('year', de, en)).toBe('Zugang für 1 Jahr');
+  });
+
+  it('falls back where the language lacks the text, or the app the language', () => {
+    expect(describePurchasePeriod('month', de, en)).toBe('1 month access');
+    expect(describePurchasePeriod('year', null, en)).toBe('1 year access');
+  });
+
+  it('takes the text from the app\'s own translation files', () => {
+    for (const locale of ['en', 'de']) {
+      const messages = JSON.parse(readFileSync(path.resolve(process.cwd(), 'i18n', 'locales', `${locale}.json`), 'utf8'));
+      expect(describePurchasePeriod('month', messages, null)).not.toBe('month');
+      expect(describePurchasePeriod('year', messages, null)).not.toBe('year');
+    }
+  });
+});
+
 describe('buildPaymentDescription', () => {
-  it('names what was bought in the visitor\'s language', () => {
-    expect(buildPaymentDescription('Yoga Basics', 'month', 'en')).toBe('Yoga Basics – 1 month access');
-    expect(buildPaymentDescription('Yoga Basics', 'year', 'de')).toBe('Yoga Basics – Zugang für 1 Jahr');
-  });
-
-  it('falls back to English for an unknown language', () => {
-    expect(buildPaymentDescription('Yoga', 'year', 'fr')).toBe('Yoga – 1 year access');
-  });
-
-  it('takes a language named like something every object has for an unknown one', () => {
-    expect(buildPaymentDescription('Yoga', 'year', 'constructor')).toBe('Yoga – 1 year access');
-    expect(buildPaymentDescription('Yoga', 'month', '__proto__')).toBe('Yoga – 1 month access');
+  it('names what was bought', () => {
+    expect(buildPaymentDescription('Yoga Basics', '1 month access')).toBe('Yoga Basics – 1 month access');
   });
 
   it('stays within Mollie\'s 255 characters', () => {
-    const description = buildPaymentDescription('x'.repeat(300), 'year', 'en');
+    const description = buildPaymentDescription('x'.repeat(300), '1 year access');
     expect(description.length).toBeLessThanOrEqual(255);
     expect(description.endsWith('– 1 year access')).toBe(true);
   });

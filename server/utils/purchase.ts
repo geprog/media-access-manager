@@ -99,24 +99,30 @@ export function parsePurchaseMetadata(value: unknown): PurchaseMetadata | null {
   };
 }
 
+/** A locale file of the app, as JSON; `null` for a language the app lacks. */
+export type LocaleMessages = Readonly<Record<string, unknown>> | null;
+
 /**
- * The customer sees this on Mollie's checkout and, where the payment method
- * carries it, on their bank statement — so it names what they paid for. Kept
- * on the server in a small table rather than in the app's translations: it is
- * the only server-side text, and the page is gone by the time it is shown.
+ * The period as the customer sees it on Mollie's checkout and, where the
+ * payment method carries it, on their bank statement. From the app's own
+ * translation files, in the visitor's language where it has the text and in
+ * the fallback language otherwise.
  */
-const PERIOD_DESCRIPTIONS: Record<string, Record<PurchasePeriod, string>> = {
-  en: { month: '1 month access', year: '1 year access' },
-  de: { month: 'Zugang für 1 Monat', year: 'Zugang für 1 Jahr' },
-};
+export function describePurchasePeriod(
+  period: PurchasePeriod,
+  messages: LocaleMessages,
+  fallback: LocaleMessages,
+): string {
+  const key = `purchase_payment_description_${period}`;
+  const text = messages?.[key] ?? fallback?.[key];
+  return typeof text === 'string' ? text : period;
+}
 
 const MOLLIE_DESCRIPTION_MAX_LENGTH = 255;
 
-export function buildPaymentDescription(title: string, period: PurchasePeriod, locale: string): string {
-  // The language comes from the request: only the table's own entries count,
-  // not what every object inherits, like `constructor`.
-  const descriptions = Object.hasOwn(PERIOD_DESCRIPTIONS, locale) ? PERIOD_DESCRIPTIONS[locale]! : PERIOD_DESCRIPTIONS.en!;
-  const suffix = ` – ${descriptions[period]}`;
+/** Names what was paid for: the media or group, and the period. */
+export function buildPaymentDescription(title: string, periodText: string): string {
+  const suffix = ` – ${periodText}`;
   const room = MOLLIE_DESCRIPTION_MAX_LENGTH - suffix.length;
   const name = title.length > room ? `${title.slice(0, room - 1)}…` : title;
   return `${name}${suffix}`;

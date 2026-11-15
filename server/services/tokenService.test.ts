@@ -32,8 +32,10 @@ const {
   listRecentViews,
   listTokensByBatchId,
   listViewsBetween,
+  parkOpenPayment,
   revertTokenPurchase,
   setOpenPayment,
+  swapOpenPayment,
   validateAndConsumeToken,
 } = await import('./tokenService');
 const { createMedia, deleteMedia } = await import('./mediaService');
@@ -431,6 +433,53 @@ describe('payments of a token', () => {
     const reverted = await findTokenByValue(token);
     expect(reverted?.expiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
     expect(reverted?.usageLimit).toBe(3);
+  });
+
+  it('keeps a replaced payment aside, so asking for its period again leads back to it', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    setOpenPayment(id, 'tr_month', 'https://checkout.example/month');
+
+    // The visitor asks for the year instead: the month waits aside.
+    expect(parkOpenPayment(id, 'tr_month')).toBe(true);
+    let row = await findTokenByValue(token);
+    expect(row).toMatchObject({
+      openPaymentId: null,
+      openPaymentCheckoutUrl: null,
+      parkedPaymentId: 'tr_month',
+      parkedPaymentCheckoutUrl: 'https://checkout.example/month',
+    });
+    setOpenPayment(id, 'tr_year', 'https://checkout.example/year');
+
+    // And back to the month: the two trade places, nothing new is created.
+    expect(swapOpenPayment(id, 'tr_year', 'tr_month')).toBe(true);
+    row = await findTokenByValue(token);
+    expect(row).toMatchObject({
+      openPaymentId: 'tr_month',
+      openPaymentCheckoutUrl: 'https://checkout.example/month',
+      parkedPaymentId: 'tr_year',
+      parkedPaymentCheckoutUrl: 'https://checkout.example/year',
+    });
+
+    // A request that lost the race to another one changes nothing.
+    expect(swapOpenPayment(id, 'tr_year', 'tr_month')).toBe(false);
+    expect(parkOpenPayment(id, 'tr_year')).toBe(false);
+    expect((await findTokenByValue(token))?.openPaymentId).toBe('tr_month');
+  });
+
+  it('forgets a payment kept aside once it has ended or was paid', async () => {
+    const { id, token } = await createToken({ mediaId: await someMedia(), name: 'expired' });
+    setOpenPayment(id, 'tr_month', 'https://checkout.example/month');
+    parkOpenPayment(id, 'tr_month');
+    setOpenPayment(id, 'tr_year', 'https://checkout.example/year');
+
+    clearOpenPayment(id, 'tr_month');
+    let row = await findTokenByValue(token);
+    expect(row).toMatchObject({ openPaymentId: 'tr_year', parkedPaymentId: null, parkedPaymentCheckoutUrl: null });
+
+    parkOpenPayment(id, 'tr_year');
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_year', period: 'year', ...paid });
+    row = await findTokenByValue(token);
+    expect(row).toMatchObject({ parkedPaymentId: null, parkedPaymentCheckoutUrl: null });
   });
 
   it('knows which payments it has applied', async () => {

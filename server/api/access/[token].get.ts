@@ -1,4 +1,5 @@
 import { denialFor, getGroupTokenAccess, getGroupWindowReason } from '../../services/tokenService';
+import { isGroupAccessRenewable } from '../../utils/groupAccess';
 import { denied, isAdminRequest, openMediaToken, purchaseOfferFor } from '../../utils/publicAccess';
 
 export default defineEventHandler(async (event) => {
@@ -50,8 +51,9 @@ export default defineEventHandler(async (event) => {
         usageCount: entry.usageCount,
       })),
       // Some media used up while the window is still open: buying again is
-      // offered beside the list, the same way as on an expired link.
-      ...await purchaseOfferFor(tokenRow, isAdmin),
+      // offered beside the list, the same way as on an expired link. The
+      // access worked out above already tells whether there is any.
+      ...await purchaseOfferFor(tokenRow, isAdmin, isGroupAccessRenewable(tokenRow, groupAccess.media)),
     };
   }
 

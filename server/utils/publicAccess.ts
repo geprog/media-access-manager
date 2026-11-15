@@ -65,16 +65,18 @@ export function denied(data: DenialData) {
 /**
  * What the page offers to buy, and the payment it would continue instead.
  * Admins checking their own links are sent to the media or group instead of
- * a checkout, so they are offered nothing.
+ * a checkout, so they are offered nothing. `renewable` passes on what the
+ * caller already knows, see `getPurchaseOffer`.
  */
 export async function purchaseOfferFor(
   tokenRow: Token | null,
   isAdmin: boolean,
+  renewable?: boolean,
 ): Promise<Pick<DenialData, 'purchaseOptions' | 'openPayment'>> {
-  if (!tokenRow || isAdmin) {
+  if (!tokenRow || isAdmin || renewable === false) {
     return { purchaseOptions: [], openPayment: null };
   }
-  const { options, openPayment } = await getPurchaseOffer(tokenRow);
+  const { options, openPayment } = await getPurchaseOffer(tokenRow, renewable);
   return { purchaseOptions: options, openPayment };
 }
 

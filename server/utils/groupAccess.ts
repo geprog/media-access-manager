@@ -52,3 +52,22 @@ export function getGroupWindowReason(
 ): TokenInvalidReason | null {
   return getTokenInvalidReason({ ...token, usageCount: 0 }, now);
 }
+
+/**
+ * Whether the visitor may buy the group again: its window ran out, or some
+ * of its media are used up while the window is still open. A link that has
+ * not started yet was never handed over, so there is nothing to renew. Takes
+ * the per-media access already worked out, so a caller holding it need not
+ * look it up again.
+ */
+export function isGroupAccessRenewable(
+  token: GroupTokenLike,
+  media: ReadonlyArray<Pick<GroupMediaAccess, 'blockedBy'>>,
+  now: Date = new Date(),
+): boolean {
+  const windowReason = getGroupWindowReason(token, now);
+  if (windowReason) {
+    return windowReason === 'expired';
+  }
+  return media.some(entry => entry.blockedBy === 'usage_limit_reached');
+}

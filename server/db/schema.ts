@@ -109,6 +109,13 @@ export const tokens = sqliteTable('tokens', {
    * itself still lets the visitor try again.
    */
   openPaymentCheckoutUrl: text('open_payment_checkout_url'),
+  /**
+   * The payment the visitor set aside by asking for the other period before
+   * picking a method, with its checkout. Asking for that period again leads
+   * back to it instead of creating yet another payment.
+   */
+  parkedPaymentId: text('parked_payment_id'),
+  parkedPaymentCheckoutUrl: text('parked_payment_checkout_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
