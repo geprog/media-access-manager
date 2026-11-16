@@ -1,6 +1,6 @@
 <template>
   <div class="flex min-h-screen flex-col">
-    <UNavigationMenu :items="items" :ui="{ root: 'px-2 border-b dark:border-b-gray-800' }">
+    <UNavigationMenu :items="items" :ui="{ root: 'px-2 border-b dark:border-b-gray-800 min-h-12' }">
       <template #list-leading>
         <div class="flex items-center gap-2">
           <BrandLogo />
@@ -33,6 +33,8 @@
       </template>
     </UNavigationMenu>
     <main class="flex-1 p-4">
+      <!-- Only admins have a session; visitors on a token page never ask. -->
+      <PaymentNoticesBanner v-if="loggedIn" />
       <slot />
     </main>
     <AppFooter />

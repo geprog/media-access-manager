@@ -19,17 +19,30 @@
         :to="adminLink"
         :label="adminLinkLabel"
       />
-      <UButton
-        v-else-if="!loggedIn && requestAccessLink"
-        class="mt-4"
-        icon="i-heroicons-envelope"
-        :to="requestAccessLink"
-        external
-        :label="$t('public_request_access')"
-      />
-      <p v-else-if="!loggedIn" class="mt-2">
-        {{ $t('public_contact_support') }}
-      </p>
+      <template v-else-if="!loggedIn">
+        <!-- Buying access again is the quickest way back in; asking support
+             stays as the way for anyone who would rather not pay online. -->
+        <PublicPurchaseOptions
+          v-if="purchaseOptions?.length || openPayment"
+          class="mt-6"
+          :token="token"
+          :options="purchaseOptions ?? []"
+          :open-payment="openPayment"
+          @canceled="emit('canceled')"
+        />
+        <UButton
+          v-if="requestAccessLink"
+          class="mt-4"
+          icon="i-heroicons-envelope"
+          :variant="purchaseOptions?.length ? 'link' : 'solid'"
+          :to="requestAccessLink"
+          external
+          :label="$t('public_request_access')"
+        />
+        <p v-else-if="!purchaseOptions?.length" class="mt-2">
+          {{ $t('public_contact_support') }}
+        </p>
+      </template>
     </template>
     <!-- A media of a group can run out while the token itself is still good,
          so the page it was reached from stays worth offering. -->
@@ -40,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import type { OpenPayment, PurchaseOption } from './PublicPurchaseOptions.vue';
 import { buildMailtoLink } from '~/utils/mailto';
 
 const props = defineProps<{
@@ -53,7 +67,14 @@ const props = defineProps<{
   mediaId?: string | null
   /** The same for a group token. */
   groupId?: string | null
+  /** What the visitor may buy to get access again, empty when nothing is for sale. */
+  purchaseOptions?: PurchaseOption[]
+  /** A payment the visitor started and has not finished, continued instead of buying again. */
+  openPayment?: OpenPayment | null
 }>();
+
+/** The visitor canceled the payment they had started; the page reloads its access. */
+const emit = defineEmits<{ canceled: [] }>();
 
 const { t } = useI18n();
 const { loggedIn } = useUserSession();

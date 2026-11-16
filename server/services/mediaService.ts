@@ -40,6 +40,24 @@ export async function createMedia(data: MediaInsert) {
   return data;
 }
 
+/** Sets what buying access to the media again costs; `undefined` leaves a price as it is. */
+export async function updateMediaPrices(
+  id: string,
+  prices: { priceMonth?: number | null, priceYear?: number | null },
+) {
+  const existing = await getMediaById(id);
+  if (!existing) {
+    return null;
+  }
+  const db = useDb();
+  const changes = {
+    priceMonth: prices.priceMonth === undefined ? existing.priceMonth : prices.priceMonth,
+    priceYear: prices.priceYear === undefined ? existing.priceYear : prices.priceYear,
+  };
+  await db.update(media).set(changes).where(eq(media.id, id));
+  return { ...existing, ...changes };
+}
+
 export interface MediaDeletion {
   deletedTokens: number
   deletedBatches: number

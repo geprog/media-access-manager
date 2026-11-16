@@ -36,6 +36,7 @@ interface HistoryStub {
   }
   targetTitle: string | null
   views: Array<{ id: string, tokenId: string, mediaId: string, mediaTitle: string, viewedAt: string }>
+  purchases: unknown[]
 }
 
 /**
@@ -44,7 +45,7 @@ interface HistoryStub {
  * answered here and the test checks what the admin is shown.
  */
 async function mockTokenHistory(page: Page, history: HistoryStub) {
-  await page.route(/\/api\/tokens\/[^/]+\/views$/, async (route) => {
+  await page.route(/\/api\/tokens\/[^/]+\/history$/, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(history) });
   });
 }
@@ -67,6 +68,7 @@ function historyStub(overrides: Partial<HistoryStub['token']>, views: HistoryStu
     },
     targetTitle,
     views,
+    purchases: [],
   };
 }
 

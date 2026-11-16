@@ -16,6 +16,12 @@ jobs:
   docker:
     name: Docker image publishing
     runs-on: ubuntu-latest
+    env:
+      # Push on main and tags, and for pull requests opened from a branch of
+      # this repository – those get a `pr-<number>` tag to deploy a preview
+      # from. Fork pull requests only build: their `GITHUB_TOKEN` is read-only,
+      # so a push would fail.
+      PUBLISH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -37,7 +43,7 @@ jobs:
             type=raw,value=next,enable={{is_default_branch}}
 
       - name: Login to registry
-        if: github.event_name != 'pull_request'
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -48,6 +54,6 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ env.PUBLISH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

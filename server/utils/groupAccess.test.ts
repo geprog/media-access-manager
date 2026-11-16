@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getGroupMediaAccess, getGroupWindowReason } from './groupAccess';
+import { getGroupMediaAccess, getGroupWindowReason, isGroupAccessRenewable } from './groupAccess';
 
 const OPEN_WINDOW = { startsAt: null, expiresAt: null, usageLimit: null };
 
@@ -61,5 +61,29 @@ describe('getGroupWindowReason', () => {
   it('closes before the token starts', () => {
     const token = { ...OPEN_WINDOW, startsAt: new Date('2026-01-02T00:00:00Z') };
     expect(getGroupWindowReason(token, new Date('2026-01-01T00:00:00Z'))).toBe('not_started');
+  });
+});
+
+describe('isGroupAccessRenewable', () => {
+  const now = new Date('2026-01-02T00:00:00Z');
+  const usedUp = { blockedBy: 'usage_limit_reached' as const };
+  const open = { blockedBy: null };
+
+  it('renews a group whose window ran out', () => {
+    const token = { ...OPEN_WINDOW, expiresAt: new Date('2026-01-01T00:00:00Z') };
+    expect(isGroupAccessRenewable(token, [{ blockedBy: 'expired' }], now)).toBe(true);
+  });
+
+  it('renews a group with some media used up while its window is open', () => {
+    expect(isGroupAccessRenewable(OPEN_WINDOW, [open, usedUp], now)).toBe(true);
+  });
+
+  it('has nothing to renew while every media can still be opened', () => {
+    expect(isGroupAccessRenewable(OPEN_WINDOW, [open, open], now)).toBe(false);
+  });
+
+  it('has nothing to renew before the token starts, as it was never handed over', () => {
+    const token = { ...OPEN_WINDOW, startsAt: new Date('2026-01-03T00:00:00Z') };
+    expect(isGroupAccessRenewable(token, [{ blockedBy: 'not_started' }], now)).toBe(false);
   });
 });

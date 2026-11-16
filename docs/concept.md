@@ -201,10 +201,12 @@ token opened a media and _when_. Admin previews spend nothing and leave no row.
 
 The history answers two questions:
 
-- **Per token** (`GET /api/tokens/:id/views`): when a visitor asks "why are all
-  my views gone?", the admin opens the token's history from the token list and
-  sees every view with its time and media, next to the token's creation, first
-  use and expiry. Views spent before the history existed are in `usage_count`
+- **Per token** (`GET /api/tokens/:id/history`): when a visitor asks "why are
+  all my views gone?", the admin opens the token's history from the token list
+  and sees every view with its time and media, next to the token's creation,
+  first use and expiry — and the payments that bought the token again, where
+  buying is on (see [purchase.md](./purchase.md)). Views spent before the
+  history existed are in `usage_count`
   but have no row; the dialog says how many, rather than letting the gap look
   like a bug.
 - **Across the deployment** (`GET /api/statistics`): the statistics page counts
@@ -341,7 +343,7 @@ media-access-manager/
 │   │   ├── groups/         # CRUD media groups
 │   │   ├── tokens/         # CRUD tokens, batch create, list by media
 │   │   │   ├── batch/      # POST batch, GET batch/:id/qr-zip
-│   │   │   └── [id]/views  # a token's view history
+│   │   │   └── [id]/history  # a token's views and payments
 │   │   ├── statistics      # views of a period: per day/month, per media, latest
 │   │   └── access/         # validate token, return embed
 │   ├── services/
@@ -390,6 +392,11 @@ media-access-manager/
 | `batches`           | id, media_id (nullable), group_id (nullable), name, created_at                                                                                 |
 | `token_media_usage` | token_id, media_id, usage_count (PK: token_id + media_id)                                                                                      |
 | `token_views`       | id, token_id, media_id, viewed_at (indexed by token_id and by viewed_at)                                                                       |
+| `token_purchases`   | payment_id (PK), token_id, period, amount, currency, dashboard_url, expires_before, usage_limit_before, expires_after, created_at, reverted_at |
+| `payment_notices`   | payment_id (PK), kind, description, dashboard_url, created_at, dismissed_at                                                                    |
+
+`media` and `media_groups` also carry `price_month` and `price_year` (minor
+units, nullable) for buying access again — see [purchase.md](./purchase.md).
 
 Exactly one of `media_id` and `group_id` is set on `tokens` and on `batches`.
 
@@ -445,6 +452,10 @@ ENCRYPTION_KEY=...           # For Vimeo passwords
 
 # Support contact offered on an expired access link (optional)
 NUXT_PUBLIC_SUPPORT_EMAIL=support@acme.example
+
+# Buying an expired link again through Mollie (optional), see purchase.md
+NUXT_MOLLIE_API_KEY=test_...
+NUXT_PUBLIC_PAYMENT_CURRENCY=EUR
 
 # Publisher of the media, linked in header and footer
 NUXT_PUBLIC_PUBLISHER_NAME=Acme GmbH

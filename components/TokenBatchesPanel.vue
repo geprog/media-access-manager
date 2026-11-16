@@ -63,7 +63,7 @@
       </p>
     </div>
 
-    <TokenViewHistoryModal v-model:token-id="historyTokenId" />
+    <TokenHistoryModal v-model:token-id="historyTokenId" />
 
     <TypedDeleteConfirmModal
       v-if="deletion"

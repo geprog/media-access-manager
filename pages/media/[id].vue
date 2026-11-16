@@ -54,6 +54,11 @@
             </li>
           </ul>
         </div>
+        <PurchasePricesCard
+          :media-id="id"
+          :price-month="media.priceMonth"
+          :price-year="media.priceYear"
+        />
         <TokenBatchesPanel :media-id="id" :default-label="media.title ?? ''" />
       </div>
     </UCard>
