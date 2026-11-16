@@ -710,15 +710,19 @@ export function revertTokenPurchase(paymentId: string, now: Date = new Date()): 
     tx.update(tokenPurchases).set({ revertedAt: now }).where(eq(tokenPurchases.paymentId, paymentId)).run();
     const tokenRow = tx.select().from(tokens).where(eq(tokens.id, purchase.tokenId)).all()[0];
     if (!tokenRow || tokenRow.expiresAt?.getTime() !== purchase.expiresAfter.getTime()) {
-      // Only purchases that found the token exactly as this one left it: an
-      // admin's edit in between is not this purchase's to take back.
+      // Only purchases that found the token's end exactly as this one left
+      // it: an admin's edit of the end in between is not this purchase's to
+      // take back. A view limit the admin set in between stays what the later
+      // purchase returns to; without one, it takes over this purchase's.
       tx.update(tokenPurchases)
-        .set({ expiresBefore: purchase.expiresBefore, usageLimitBefore: purchase.usageLimitBefore })
+        .set({
+          expiresBefore: purchase.expiresBefore,
+          usageLimitBefore: sql`coalesce(${tokenPurchases.usageLimitBefore}, ${purchase.usageLimitBefore})`,
+        })
         .where(and(
           eq(tokenPurchases.tokenId, purchase.tokenId),
           isNull(tokenPurchases.revertedAt),
           eq(tokenPurchases.expiresBefore, purchase.expiresAfter),
-          isNull(tokenPurchases.usageLimitBefore),
         ))
         .run();
       return 'superseded';

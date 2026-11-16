@@ -88,9 +88,11 @@ vi.mock('../utils/paymentSettings', () => ({
 }));
 
 const {
+  cancelOpenPayment,
   confirmPayment,
   confirmTokenPayment,
   getPurchaseOffer,
+  PaymentInProgressError,
   PurchaseUnavailableError,
   startPurchase,
 } = await import('./paymentService');
@@ -186,6 +188,47 @@ describe('switching periods', () => {
     expect((await findTokenByValue(token))).toMatchObject({
       openPaymentId: paymentIdOf(month.checkoutUrl),
       parkedPaymentId: paymentIdOf(year.checkoutUrl),
+    });
+  });
+
+  it('waits for the payment set aside once it is being processed, and starts nothing beside it', async () => {
+    const { token } = await expiredToken();
+    const month = await purchase(token, 'month');
+    await purchase(token, 'year');
+
+    // Paid from the browser history: the month is being processed while the
+    // year, which replaced it, still waits for a method at Mollie.
+    const payment = payments.get(paymentIdOf(month.checkoutUrl))!;
+    Object.assign(payment, { status: 'pending', method: 'paypal' });
+    delete payment._links.checkout;
+
+    expect(await confirmTokenPayment(token)).toMatchObject({ status: 'pending', wait: true });
+    const { openPayment } = await getPurchaseOffer((await findTokenByValue(token))!);
+    expect(openPayment).toMatchObject({ period: 'month', status: 'pending', replaceable: false });
+    // Neither period starts a second payment: the visitor could end up paying twice.
+    await expect(purchase(token, 'year')).rejects.toBeInstanceOf(PaymentInProgressError);
+    await expect(purchase(token, 'month')).rejects.toBeInstanceOf(PaymentInProgressError);
+    expect(payments.size).toBe(2);
+  });
+
+  it('cancels the bank transfer set aside, not the open payment beside it', async () => {
+    const { token } = await expiredToken();
+    const month = await purchase(token, 'month');
+    const year = await purchase(token, 'year');
+
+    // From the browser history the visitor chose a bank transfer for the month.
+    const monthId = paymentIdOf(month.checkoutUrl);
+    Object.assign(payments.get(monthId)!, { method: 'banktransfer', isCancelable: true });
+
+    expect(await confirmTokenPayment(token)).toMatchObject({ status: 'transfer' });
+    const { openPayment } = await getPurchaseOffer((await findTokenByValue(token))!);
+    expect(openPayment).toMatchObject({ period: 'month', status: 'transfer', cancelable: true });
+
+    await cancelOpenPayment(token);
+    expect(payments.get(monthId)!.status).toBe('canceled');
+    expect((await findTokenByValue(token))).toMatchObject({
+      openPaymentId: paymentIdOf(year.checkoutUrl),
+      parkedPaymentId: null,
     });
   });
 

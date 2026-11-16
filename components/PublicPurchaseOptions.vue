@@ -102,6 +102,19 @@ const { t, locale } = useI18n();
 const pendingPeriod = ref<PurchaseOption['period'] | null>(null);
 
 /**
+ * Brought back from Mollie's checkout by the browser's back button, the page
+ * may be restored as it was left — on its way to the checkout, every button
+ * disabled — rather than loaded again. Then it takes the visitor's next click.
+ */
+function restoreButtons(event: PageTransitionEvent) {
+  if (event.persisted) {
+    pendingPeriod.value = null;
+  }
+}
+onMounted(() => window.addEventListener('pageshow', restoreButtons));
+onBeforeUnmount(() => window.removeEventListener('pageshow', restoreButtons));
+
+/**
  * The periods still open to the visitor: all of them while they began no
  * payment, and otherwise the ones that would replace it — its own period is
  * what **Continue payment** leads to.

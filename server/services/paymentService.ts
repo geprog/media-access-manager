@@ -334,8 +334,31 @@ function pendingSince(payment: MolliePayment, status: PurchaseStatus): Date {
   return new Date(Number.isNaN(created) ? seen : Math.max(seen, created));
 }
 
-function isOngoing(state: OpenPaymentState | null): state is OpenPaymentState & { status: OpenPayment['status'] } {
+type OngoingPayment = OpenPaymentState & { status: OpenPayment['status'] };
+
+function isOngoing(state: OpenPaymentState | null): state is OngoingPayment {
   return state?.status === 'open' || state?.status === 'pending' || state?.status === 'transfer';
+}
+
+/**
+ * Whether somebody has tried to pay this payment: a method was picked at
+ * Mollie, so money may be on its way. Such a payment is gone on with
+ * whichever slot it sits in, and nothing is started beside it.
+ */
+function isAttempted(state: OpenPaymentState): boolean {
+  return !isPaymentUnattempted(state.status, state.method);
+}
+
+/**
+ * The payment the visitor's page is about, of the two the token may hold: one
+ * somebody has tried to pay, in either slot — the one set aside may have been
+ * paid from the browser history while the open one still waits for a method —
+ * and otherwise the open one. One set aside that nobody tried to pay stands in
+ * the way of nothing; it is only led back to when its period is asked for.
+ */
+function paymentInProgress(open: OpenPaymentState | null, parked: OpenPaymentState | null): OngoingPayment | null {
+  const ongoing = [open, parked].filter(isOngoing);
+  return ongoing.find(isAttempted) ?? (isOngoing(open) ? open : null);
 }
 
 /**
@@ -366,15 +389,16 @@ export async function getPurchaseOffer(tokenRow: Token, renewable?: boolean): Pr
     return NO_OFFER;
   }
   const options = (await getPurchaseTarget(tokenRow))?.options ?? [];
+  const current = paymentInProgress(open, parked);
   return {
     options,
-    openPayment: isOngoing(open)
+    openPayment: current
       ? {
-          period: open.period,
-          status: open.status,
-          resumable: !!open.checkoutUrl,
-          cancelable: open.cancelable,
-          replaceable: isPaymentUnattempted(open.status, open.method),
+          period: current.period,
+          status: current.status,
+          resumable: !!current.checkoutUrl,
+          cancelable: current.cancelable,
+          replaceable: !isAttempted(current),
         }
       : null,
   };
@@ -451,11 +475,12 @@ async function leadToOpenPayment(tokenId: string): Promise<{ checkoutUrl: string
  * nobody has tried to pay it: a visitor who picked the wrong price, left
  * Mollie's method list and came back is not held to it until it expires.
  * The replaced payment is set aside, and asking for its period again leads
- * back to it — also once the payment that replaced it is gone, and also once
- * a method was picked for it from the browser history, as that attempt may
- * still go through. Switching to and fro thus creates no more than one
- * payment per period. Otherwise a new payment is created, at the target's
- * price at this moment; the request only names the period.
+ * back to it — also once the payment that replaced it is gone. Once a method
+ * was picked for it from the browser history, that attempt may still go
+ * through, and it is the one gone on with whatever period is asked for.
+ * Switching to and fro thus creates no more than one payment per period.
+ * Otherwise a new payment is created, at the target's price at this moment;
+ * the request only names the period.
  */
 export async function startPurchase(data: {
   tokenValue: string
@@ -478,19 +503,20 @@ export async function startPurchase(data: {
   if (!tokenRow || !(await isTokenRenewable(tokenRow))) {
     throw new PurchaseUnavailableError();
   }
-  // Asking for the period they began leads back to that payment; asking for
-  // another one replaces it, as long as nobody has tried to pay it.
-  if (isOngoing(open) && (open.period === data.period || !isPaymentUnattempted(open.status, open.method))) {
-    return continuePayment(open);
-  }
-  if (isOngoing(parked) && parked.period === data.period) {
-    // The one set aside is for this period: it takes the open one's place —
-    // or the empty place, once the payment that replaced it is gone.
-    const continued = continuePayment(parked);
-    if (!swapOpenPayment(tokenRow.id, isOngoing(open) ? open.id : null, parked.id)) {
+  // One somebody has tried to pay, in either slot, is the one to go on with:
+  // a second payment beside it could have the visitor pay twice. Otherwise
+  // the one for this period, open or set aside — asking for another period
+  // than the open one is for replaces it, as nobody has tried to pay it.
+  const ongoing = [open, parked].filter(isOngoing);
+  const continued = ongoing.find(isAttempted) ?? ongoing.find(state => state.period === data.period);
+  if (continued) {
+    const checkout = continuePayment(continued);
+    // The one set aside takes the open one's place — or the empty place,
+    // once the payment that replaced it is gone.
+    if (continued.id !== open?.id && !swapOpenPayment(tokenRow.id, isOngoing(open) ? open.id : null, continued.id)) {
       return leadToOpenPayment(tokenRow.id);
     }
-    return continued;
+    return checkout;
   }
   if (isOngoing(open)) {
     await setOpenPaymentAside(mollie, tokenRow.id, open);
@@ -533,9 +559,9 @@ export async function startPurchase(data: {
 export class PaymentNotCancelableError extends Error {}
 
 /**
- * Cancels the payment the visitor started, where Mollie allows it — a bank
- * transfer not yet made, above all — so they can pay another way instead of
- * waiting days for it to expire. The token forgets it right away.
+ * Cancels the payment the visitor's page is about, where Mollie allows it — a
+ * bank transfer not yet made, above all — so they can pay another way instead
+ * of waiting days for it to expire. The token forgets it right away.
  */
 export async function cancelOpenPayment(tokenValue: string): Promise<void> {
   const mollie = useMollie();
@@ -543,13 +569,14 @@ export async function cancelOpenPayment(tokenValue: string): Promise<void> {
   if (!mollie || !tokenRow) {
     throw new PurchaseUnavailableError();
   }
-  const open = await refreshOpenPayment(mollie, tokenRow);
-  if (!isOngoing(open) || !open.cancelable) {
+  const { open, parked } = await refreshPayments(mollie, tokenRow);
+  const current = paymentInProgress(open, parked);
+  if (!current?.cancelable) {
     throw new PaymentNotCancelableError();
   }
-  await mollie.cancelPayment(open.id);
-  recentLookups.delete(open.id);
-  clearOpenPayment(tokenRow.id, open.id);
+  await mollie.cancelPayment(current.id);
+  recentLookups.delete(current.id);
+  clearOpenPayment(tokenRow.id, current.id);
 }
 
 export interface TokenPaymentCheck {
@@ -587,10 +614,8 @@ export async function confirmTokenPayment(tokenValue: string): Promise<TokenPaym
   }
   const { open, parked } = await refreshPayments(mollie, tokenRow);
   // A paid one, if either is: the token was just renewed. Otherwise the one
-  // still in progress, the open one first — the one set aside only counts
-  // while nothing else is going on.
-  const states = [open, parked].filter(state => state !== null);
-  const current = states.find(isPaid) ?? states.find(isOngoing) ?? states[0] ?? null;
+  // in progress, and failing that whatever is left to report, e.g. a failed one.
+  const current = [open, parked].find(isPaid) ?? paymentInProgress(open, parked) ?? open ?? parked;
   return {
     status: current?.status ?? null,
     wait: current?.status === 'pending' && current.recent,

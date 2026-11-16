@@ -129,11 +129,14 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
   method (`isCancelable` is `false`), so the replaced one stays payable until
   Mollie expires it. The token keeps it aside, and picking its period again
   leads back to it instead of creating yet another payment — also once the
-  payment that replaced it is gone, and also once a method was picked for it
-  from the visitor's browser history, since that attempt may still go
-  through. However often the visitor switches, Mollie holds no more than one
-  payment per period for the token. Both payments are looked up whenever the
-  page loads, so one paid after all, from the browser history, extends the
+  payment that replaced it is gone. However often the visitor switches,
+  Mollie holds no more than one payment per period for the token. Both
+  payments are looked up whenever the page loads. Once a method was picked
+  for the one set aside, from the visitor's browser history, that attempt may
+  still go through: it becomes the payment the page is about — waited for
+  while it is processed, shown as a bank transfer, cancelable where Mollie
+  allows — and whichever period is picked leads to it, since a second payment
+  beside it could have the visitor pay twice. One paid after all extends the
   token even where no webhook gets through — unless the token is valid again
   by then, see [A payment that buys nothing](#a-payment-that-buys-nothing).
 - a bank transfer, `open` until the money arrives, shows "waiting for your
@@ -192,10 +195,11 @@ moved since — the visitor bought again after that period ran out, or an admin
 edited the token — the later state wins, and the purchase is merely marked.
 The admin is told either way (see §4).
 
-A later purchase that found the token exactly as this one left it takes over
-what this one remembered of the token before. Should its money go back too,
-the token returns to what it was before both, not to the end the first one
-had bought and no longer pays for.
+A later purchase that found the token's end exactly as this one left it takes
+over what this one remembered of the token before. Should its money go back
+too, the token returns to what it was before both, not to the end the first
+one had bought and no longer pays for. A view limit an admin set between the
+two is kept: that is the later purchase's own "before".
 
 ### A payment that buys nothing
 

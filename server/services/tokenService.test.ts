@@ -36,6 +36,7 @@ const {
   revertTokenPurchase,
   setOpenPayment,
   swapOpenPayment,
+  updateToken,
   validateAndConsumeToken,
 } = await import('./tokenService');
 const { createMedia, deleteMedia } = await import('./mediaService');
@@ -433,6 +434,28 @@ describe('payments of a token', () => {
     const reverted = await findTokenByValue(token);
     expect(reverted?.expiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
     expect(reverted?.usageLimit).toBe(3);
+  });
+
+  it('returns to the end before both purchases even when an admin capped the views between them', async () => {
+    const { id, token } = await createToken({
+      mediaId: await someMedia(),
+      name: 'capped between purchases',
+      usageLimit: 3,
+      expiresAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    const now = new Date('2026-03-15T12:00:00Z');
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_year', period: 'year', now, ...paid });
+    // The admin caps the renewed token's views; the month then builds on the year.
+    await updateToken(id, { usageLimit: 5 });
+    applyTokenPurchase({ tokenId: id, paymentId: 'tr_month', period: 'month', now, ...paid });
+
+    expect(revertTokenPurchase('tr_year', now)).toBe('superseded');
+    expect(revertTokenPurchase('tr_month', now)).toBe('reverted');
+    const reverted = await findTokenByValue(token);
+    // The end from before either purchase — not the year's, which was paid
+    // back — and the limit the admin set last.
+    expect(reverted?.expiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
+    expect(reverted?.usageLimit).toBe(5);
   });
 
   it('keeps a replaced payment aside, so asking for its period again leads back to it', async () => {
