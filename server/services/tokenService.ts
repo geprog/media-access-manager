@@ -787,10 +787,12 @@ export function parkOpenPayment(tokenId: string, paymentId: string): boolean {
 
 /**
  * Lets the open payment and the one set aside trade places: the visitor
- * asked for the period of the one set aside again. `false` when either is no
- * longer the one named, e.g. another request got there first.
+ * asked for the period of the one set aside again. With no open payment
+ * (`null`), the one set aside simply becomes the open one. `false` when
+ * either slot no longer holds what was named, e.g. another request got
+ * there first.
  */
-export function swapOpenPayment(tokenId: string, openPaymentId: string, parkedPaymentId: string): boolean {
+export function swapOpenPayment(tokenId: string, openPaymentId: string | null, parkedPaymentId: string): boolean {
   const { changes } = useDb()
     .update(tokens)
     .set({
@@ -801,7 +803,7 @@ export function swapOpenPayment(tokenId: string, openPaymentId: string, parkedPa
     })
     .where(and(
       eq(tokens.id, tokenId),
-      eq(tokens.openPaymentId, openPaymentId),
+      openPaymentId === null ? isNull(tokens.openPaymentId) : eq(tokens.openPaymentId, openPaymentId),
       eq(tokens.parkedPaymentId, parkedPaymentId),
     ))
     .run();

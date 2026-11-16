@@ -52,6 +52,11 @@ export function usePaymentCheck(token: MaybeRefOrGetter<string>, onSettled: () =
   });
 
   async function settle(next: PaymentCheckState) {
+    if (stopped) {
+      // The visitor left while the server was asked: loading the token now
+      // would spend a view on a page nobody sees.
+      return;
+    }
     state.value = next;
     await onSettled();
   }

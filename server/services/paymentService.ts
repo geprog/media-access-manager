@@ -1,8 +1,9 @@
 import type { Token } from '../db/schema';
 import type { MollieApi, MolliePayment } from '../utils/mollieApi';
-import type { LocaleMessages, PurchaseMetadata, PurchaseOption, PurchasePeriod, PurchaseStatus } from '../utils/purchase';
+import type { PurchaseMetadata, PurchaseOption, PurchasePeriod, PurchaseStatus } from '../utils/purchase';
 import { toMinorUnits, toMollieAmount } from '../../utils/money';
 import { createMollieApi } from '../utils/mollieApi';
+import { getMollieSettings, getPaymentCurrency, loadLocaleMessages } from '../utils/paymentSettings';
 import {
   buildPaymentDescription,
   classifyPaymentStatus,
@@ -34,7 +35,7 @@ let client: MollieApi | null = null;
 
 /** `null` while no API key is configured, which switches purchasing off. */
 function useMollie(): MollieApi | null {
-  const { apiKey, apiEndpoint } = useRuntimeConfig().mollie;
+  const { apiKey, apiEndpoint } = getMollieSettings();
   if (!apiKey) {
     return null;
   }
@@ -43,11 +44,7 @@ function useMollie(): MollieApi | null {
 }
 
 export function isPurchasingEnabled(): boolean {
-  return !!useRuntimeConfig().mollie.apiKey;
-}
-
-function useCurrency(): string {
-  return useRuntimeConfig().public.payment.currency || 'EUR';
+  return !!getMollieSettings().apiKey;
 }
 
 interface PurchaseTarget {
@@ -63,7 +60,7 @@ interface PurchaseTarget {
  * media's, a group token at its group's.
  */
 async function getPurchaseTarget(tokenRow: Token): Promise<PurchaseTarget | null> {
-  const currency = useCurrency();
+  const currency = getPaymentCurrency();
   if (tokenRow.groupId) {
     const group = await getMediaGroupById(tokenRow.groupId);
     return group
@@ -172,7 +169,10 @@ async function settlePayment(payment: MolliePayment, metadata: PurchaseMetadata)
   if (isPaymentReversed(payment)) {
     // Mollie keeps a refunded or charged back payment `paid` and calls the
     // same webhook; a purchase it never applied stays unapplied.
-    if (revertTokenPurchase(payment.id) === 'reverted') {
+    const reversal = revertTokenPurchase(payment.id);
+    if (reversal === 'reverted' || reversal === 'superseded') {
+      // Told either way: the money is gone whether the access it bought was
+      // still standing or a later purchase had replaced it.
       recordPaymentNotice({ paymentId: payment.id, kind: 'reverted', ...noticeDetails(payment) });
     }
     // Nothing is left to pay or to wait for; a token still pointing here
@@ -251,8 +251,30 @@ async function refreshOpenPayment(
 }
 
 /** The payment the visitor set aside for the other period, refreshed the same way. */
-async function refreshParkedPayment(mollie: MollieApi, tokenRow: Token): Promise<OpenPaymentState | null> {
-  return refreshPayment(mollie, tokenRow, tokenRow.parkedPaymentId, tokenRow.parkedPaymentCheckoutUrl);
+async function refreshParkedPayment(
+  mollie: MollieApi,
+  tokenRow: Token,
+  options: { reuseRecent?: boolean } = {},
+): Promise<OpenPaymentState | null> {
+  return refreshPayment(mollie, tokenRow, tokenRow.parkedPaymentId, tokenRow.parkedPaymentCheckoutUrl, options);
+}
+
+/**
+ * Both payments the token may hold, the open one and the one set aside,
+ * brought up to date. Either may have been paid after all.
+ */
+async function refreshPayments(
+  mollie: MollieApi,
+  tokenRow: Token,
+  options: { reuseRecent?: boolean } = {},
+): Promise<{ open: OpenPaymentState | null, parked: OpenPaymentState | null }> {
+  const open = await refreshOpenPayment(mollie, tokenRow, options);
+  const parked = await refreshParkedPayment(mollie, tokenRow, options);
+  return { open, parked };
+}
+
+function isPaid(state: OpenPaymentState | null): boolean {
+  return state?.status === 'paid';
 }
 
 async function refreshPayment(
@@ -287,8 +309,29 @@ async function refreshPayment(
     dashboardUrl: payment._links.dashboard?.href ?? null,
     method: payment.method ?? null,
     cancelable: !!payment.isCancelable,
-    recent: isPaymentRecent(payment.createdAt),
+    recent: isPaymentRecent(pendingSince(payment, status)),
   };
+}
+
+/**
+ * When each payment was first seen being processed. Mollie dates a payment's
+ * creation, not the moment the customer paid, and a PayPal or Klarna checkout
+ * may be left open for hours before that: counted from creation, a payment
+ * made after a long pause would look old the moment it is pending, and the
+ * page would not wait for it. Kept in memory: after a restart a long-pending
+ * payment is waited for once more, which is what every visit did before.
+ */
+const firstSeenPending = new Map<string, number>();
+
+function pendingSince(payment: MolliePayment, status: PurchaseStatus): Date {
+  if (status !== 'pending') {
+    firstSeenPending.delete(payment.id);
+    return new Date(payment.createdAt);
+  }
+  const seen = firstSeenPending.get(payment.id) ?? Date.now();
+  firstSeenPending.set(payment.id, seen);
+  const created = new Date(payment.createdAt).getTime();
+  return new Date(Number.isNaN(created) ? seen : Math.max(seen, created));
 }
 
 function isOngoing(state: OpenPaymentState | null): state is OpenPaymentState & { status: OpenPayment['status'] } {
@@ -308,16 +351,17 @@ export async function getPurchaseOffer(tokenRow: Token, renewable?: boolean): Pr
     return NO_OFFER;
   }
   let open: OpenPaymentState | null = null;
+  let parked: OpenPaymentState | null = null;
   try {
-    // The page asked about this payment a moment ago, before it loaded.
-    open = await refreshOpenPayment(mollie, tokenRow, { reuseRecent: true });
+    // The page asked about these payments a moment ago, before it loaded.
+    ({ open, parked } = await refreshPayments(mollie, tokenRow, { reuseRecent: true }));
   }
   catch (error) {
     // Mollie unreachable: the page offers buying as usual, and starting a
     // purchase asks Mollie again before it creates anything.
     console.error(`Failed to look up the open payment of a token:`, error);
   }
-  if (open?.status === 'paid') {
+  if (isPaid(open) || isPaid(parked)) {
     // Just renewed: there is nothing to buy, and the next load shows the content.
     return NO_OFFER;
   }
@@ -334,17 +378,6 @@ export async function getPurchaseOffer(tokenRow: Token, renewable?: boolean): Pr
         }
       : null,
   };
-}
-
-/** Only plain language codes: the code comes from the request and names a file. */
-const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i;
-
-/** The app's translations for a language, `null` for one it lacks. */
-async function loadLocaleMessages(locale: string): Promise<LocaleMessages> {
-  if (!LOCALE_CODE.test(locale)) {
-    return null;
-  }
-  return useStorage('assets:locales').getItem<Record<string, unknown>>(`${locale}.json`);
 }
 
 /** The bought period as the checkout shows it, in the visitor's language. */
@@ -387,18 +420,26 @@ async function setOpenPaymentAside(mollie: MollieApi, tokenId: string, open: Ope
   clearOpenPayment(tokenId, open.id);
 }
 
+/** Where a payment still in progress is continued; none left to show means it is being processed. */
+function continuePayment(state: OpenPaymentState): { checkoutUrl: string } {
+  if (!state.checkoutUrl) {
+    throw new PaymentInProgressError();
+  }
+  return { checkoutUrl: state.checkoutUrl };
+}
+
 /**
- * Whether the payment set aside can be continued for this period the way the
- * open one is replaced: nobody has tried to pay it and its checkout is known.
+ * Where a request that lost a race is sent: a second request for the same
+ * token got its payment remembered first, e.g. from another tab, and both are
+ * led to that one. A payment created by the loser is shown to nobody and
+ * expires at Mollie on its own.
  */
-function isContinuable(
-  parked: OpenPaymentState | null,
-  period: PurchasePeriod,
-): parked is OpenPaymentState & { checkoutUrl: string } {
-  return !!parked
-    && parked.period === period
-    && isPaymentUnattempted(parked.status, parked.method)
-    && !!parked.checkoutUrl;
+async function leadToOpenPayment(tokenId: string): Promise<{ checkoutUrl: string }> {
+  const checkoutUrl = (await findTokenById(tokenId))?.openPaymentCheckoutUrl;
+  if (!checkoutUrl) {
+    throw new Error(`Token ${tokenId} lost its open payment while another was being started`);
+  }
+  return { checkoutUrl };
 }
 
 /**
@@ -409,10 +450,12 @@ function isContinuable(
  * than that payment is for is the one case that replaces it, and only while
  * nobody has tried to pay it: a visitor who picked the wrong price, left
  * Mollie's method list and came back is not held to it until it expires.
- * The replaced payment is set aside, and switching back leads to it again, so
- * switching to and fro creates no more than one payment per period.
- * Otherwise a new payment is created, at the target's price at this moment;
- * the request only names the period.
+ * The replaced payment is set aside, and asking for its period again leads
+ * back to it — also once the payment that replaced it is gone, and also once
+ * a method was picked for it from the browser history, as that attempt may
+ * still go through. Switching to and fro thus creates no more than one
+ * payment per period. Otherwise a new payment is created, at the target's
+ * price at this moment; the request only names the period.
  */
 export async function startPurchase(data: {
   tokenValue: string
@@ -426,31 +469,30 @@ export async function startPurchase(data: {
   if (!mollie || !tokenRow) {
     throw new PurchaseUnavailableError();
   }
-  const open = await refreshOpenPayment(mollie, tokenRow);
-  if (open?.status === 'paid') {
+  const { open, parked } = await refreshPayments(mollie, tokenRow);
+  if (isPaid(open) || isPaid(parked)) {
+    // Paid after all, perhaps from the browser history: the token was renewed
+    // by it just now, and there is nothing left to buy.
     tokenRow = await findTokenById(tokenRow.id);
   }
   if (!tokenRow || !(await isTokenRenewable(tokenRow))) {
     throw new PurchaseUnavailableError();
   }
+  // Asking for the period they began leads back to that payment; asking for
+  // another one replaces it, as long as nobody has tried to pay it.
+  if (isOngoing(open) && (open.period === data.period || !isPaymentUnattempted(open.status, open.method))) {
+    return continuePayment(open);
+  }
+  if (isOngoing(parked) && parked.period === data.period) {
+    // The one set aside is for this period: it takes the open one's place —
+    // or the empty place, once the payment that replaced it is gone.
+    const continued = continuePayment(parked);
+    if (!swapOpenPayment(tokenRow.id, isOngoing(open) ? open.id : null, parked.id)) {
+      return leadToOpenPayment(tokenRow.id);
+    }
+    return continued;
+  }
   if (isOngoing(open)) {
-    // Asking for the period they began leads back to that payment; asking for
-    // another one replaces it, as long as nobody has tried to pay it.
-    if (open.period === data.period || !isPaymentUnattempted(open.status, open.method)) {
-      if (!open.checkoutUrl) {
-        throw new PaymentInProgressError();
-      }
-      return { checkoutUrl: open.checkoutUrl };
-    }
-    const parked = await refreshParkedPayment(mollie, tokenRow);
-    if (parked?.status === 'paid') {
-      // Paid from the visitor's browser history after all: the token was
-      // renewed by it just now, and there is nothing left to buy.
-      throw new PurchaseUnavailableError();
-    }
-    if (isContinuable(parked, data.period) && swapOpenPayment(tokenRow.id, open.id, parked.id)) {
-      return { checkoutUrl: parked.checkoutUrl };
-    }
     await setOpenPaymentAside(mollie, tokenRow.id, open);
   }
   const target = await getPurchaseTarget(tokenRow);
@@ -482,14 +524,7 @@ export async function startPurchase(data: {
     throw new Error(`Mollie returned no checkout URL for payment ${payment.id}`);
   }
   if (!setOpenPayment(tokenRow.id, payment.id, checkoutUrl)) {
-    // A second request for the same token got here first, e.g. from another
-    // tab. Both are led to its checkout; the payment created here is shown to
-    // nobody and expires at Mollie on its own.
-    const winner = (await findTokenById(tokenRow.id))?.openPaymentCheckoutUrl;
-    if (!winner) {
-      throw new Error(`Token ${tokenRow.id} lost its open payment while another was being started`);
-    }
-    return { checkoutUrl: winner };
+    return leadToOpenPayment(tokenRow.id);
   }
   return { checkoutUrl };
 }
@@ -550,11 +585,16 @@ export async function confirmTokenPayment(tokenValue: string): Promise<TokenPaym
   if (!tokenRow) {
     throw new PurchaseUnavailableError();
   }
-  const open = await refreshOpenPayment(mollie, tokenRow);
+  const { open, parked } = await refreshPayments(mollie, tokenRow);
+  // A paid one, if either is: the token was just renewed. Otherwise the one
+  // still in progress, the open one first — the one set aside only counts
+  // while nothing else is going on.
+  const states = [open, parked].filter(state => state !== null);
+  const current = states.find(isPaid) ?? states.find(isOngoing) ?? states[0] ?? null;
   return {
-    status: open?.status ?? null,
-    wait: open?.status === 'pending' && open.recent,
-    dashboardUrl: open?.dashboardUrl ?? null,
+    status: current?.status ?? null,
+    wait: current?.status === 'pending' && current.recent,
+    dashboardUrl: current?.dashboardUrl ?? null,
   };
 }
 

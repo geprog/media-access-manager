@@ -13,8 +13,12 @@ export function recordPaymentNotice(data: {
   kind: PaymentNotice['kind']
   description: string
   dashboardUrl: string | null
+  now?: Date
 }) {
-  useDb().insert(paymentNotices).values(data).onConflictDoNothing().run();
+  const { now, ...notice } = data;
+  // Dated here: the column's own default is SQLite's text timestamp, which
+  // the integer mapping reads as no date at all.
+  useDb().insert(paymentNotices).values({ ...notice, createdAt: now ?? new Date() }).onConflictDoNothing().run();
 }
 
 /**

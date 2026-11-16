@@ -464,6 +464,17 @@ describe('payments of a token', () => {
     expect(swapOpenPayment(id, 'tr_year', 'tr_month')).toBe(false);
     expect(parkOpenPayment(id, 'tr_year')).toBe(false);
     expect((await findTokenByValue(token))?.openPaymentId).toBe('tr_month');
+
+    // The open one ended; the one set aside takes the empty place.
+    clearOpenPayment(id, 'tr_month');
+    expect(swapOpenPayment(id, 'tr_month', 'tr_year')).toBe(false);
+    expect(swapOpenPayment(id, null, 'tr_year')).toBe(true);
+    expect(await findTokenByValue(token)).toMatchObject({
+      openPaymentId: 'tr_year',
+      openPaymentCheckoutUrl: 'https://checkout.example/year',
+      parkedPaymentId: null,
+      parkedPaymentCheckoutUrl: null,
+    });
   });
 
   it('forgets a payment kept aside once it has ended or was paid', async () => {

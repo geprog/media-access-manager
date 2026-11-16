@@ -204,7 +204,7 @@ export function isPaymentReversed(payment: ReversiblePayment): boolean {
  */
 const PENDING_WAIT_MS = 15 * 60 * 1000;
 
-export function isPaymentRecent(createdAt: string, now: Date = new Date()): boolean {
-  const created = new Date(createdAt).getTime();
-  return !Number.isNaN(created) && now.getTime() - created < PENDING_WAIT_MS;
+export function isPaymentRecent(since: string | Date, now: Date = new Date()): boolean {
+  const start = new Date(since).getTime();
+  return !Number.isNaN(start) && now.getTime() - start < PENDING_WAIT_MS;
 }

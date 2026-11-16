@@ -457,6 +457,29 @@ test.describe('Buying access again', () => {
     expect((await fetchStubPayments(request)).length - before).toBe(2);
   });
 
+  test('leads back to the payment set aside once the one that replaced it expired', async ({ page, request }, testInfo) => {
+    const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
+    const { token } = await visitExpiredPricedMedia(page, title);
+    const before = (await fetchStubPayments(request)).length;
+
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const month = page.url().split('/checkout/')[1] ?? '';
+    await page.getByRole('button', { name: 'Leave' }).click();
+    await page.getByRole('button', { name: '1 year for €49.00' }).click();
+    await page.waitForURL(/\/checkout\/tr_/);
+    const year = page.url().split('/checkout/')[1] ?? '';
+
+    // Mollie lets the year expire unpaid. The month, set aside, is still open
+    // and is what "1 month" leads to — not a third payment.
+    expect((await setStubPaymentStatus(request, year, 'expired')).ok()).toBe(true);
+    await page.goto(`/${token}`);
+    await page.getByRole('button', { name: '1 month for €9.00' }).click();
+    await page.waitForURL(`**/checkout/${month}`);
+
+    expect((await fetchStubPayments(request)).length - before).toBe(2);
+  });
+
   test('offers buying again once Mollie lets an open payment expire', async ({ page, request }, testInfo) => {
     const title = `E2E: ${testInfo.title} ${uniqueId(testInfo.testId)}`;
     const { token } = await visitExpiredPricedMedia(page, title);

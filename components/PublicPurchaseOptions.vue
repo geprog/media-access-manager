@@ -54,7 +54,7 @@
       color="error"
       variant="subtle"
       icon="i-heroicons-exclamation-circle"
-      :title="failed === 'cancel' ? $t('public_purchase_cancel_error') : $t('public_purchase_error')"
+      :title="$t(FAILURE_MESSAGES[failed])"
     />
     <p class="text-xs text-muted">
       {{ $t('public_purchase_secure_hint') }}
@@ -125,7 +125,31 @@ const openPaymentText = computed(() => {
   }
 });
 const canceling = ref(false);
-const failed = ref<'purchase' | 'cancel' | null>(null);
+type Failure = 'purchase' | 'unavailable' | 'in_progress' | 'cancel';
+const failed = ref<Failure | null>(null);
+
+const FAILURE_MESSAGES: Record<Failure, string> = {
+  purchase: 'public_purchase_error',
+  unavailable: 'public_purchase_unavailable',
+  in_progress: 'public_purchase_in_progress',
+  cancel: 'public_purchase_cancel_error',
+};
+
+/**
+ * The server says why a purchase could not start: nothing is for sale any
+ * more (the token was renewed meanwhile, say) or the payment is being
+ * processed. Both call for a reload, not another try.
+ */
+function purchaseFailure(error: unknown): Failure {
+  const reason = (error as { data?: { data?: { reason?: string } } })?.data?.data?.reason;
+  if (reason === 'purchase_unavailable') {
+    return 'unavailable';
+  }
+  if (reason === 'payment_in_progress') {
+    return 'in_progress';
+  }
+  return 'purchase';
+}
 
 function optionLabel(option: PurchaseOption) {
   const price = formatPrice(option.amount, option.currency, locale.value);
@@ -149,8 +173,8 @@ async function purchase(period: PurchaseOption['period']) {
     );
     await navigateTo(checkoutUrl, { external: true });
   }
-  catch {
-    failed.value = 'purchase';
+  catch (error) {
+    failed.value = purchaseFailure(error);
     pendingPeriod.value = null;
   }
 }

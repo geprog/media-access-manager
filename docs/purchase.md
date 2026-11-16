@@ -87,11 +87,15 @@ payment that stays pending is a case for a person, who finds it in the Mollie
 dashboard through the token in its metadata.
 
 The wait is for a payment just made. The confirm call answers `wait: false`
-for a `pending` payment created more than fifteen minutes ago, and the page
-then loads straight away with the same notice: a payment processing for that
-long is not going to finish in the next two minutes, and every visit waiting
-them out again would only keep the visitor from the page. Not from a second
-purchase, though — that stays off until Mollie settles the first.
+for a payment the app first saw `pending` more than fifteen minutes ago, and
+the page then loads straight away with the same notice: a payment processing
+for that long is not going to finish in the next two minutes, and every visit
+waiting them out again would only keep the visitor from the page. Not from a
+second purchase, though — that stays off until Mollie settles the first.
+Counted from when the app first saw the payment pending, not from its
+creation: Mollie dates the creation, and a PayPal or Klarna checkout may be
+left open for hours before the customer pays. That moment is kept in memory,
+so after a restart a long-pending payment is waited for once more.
 
 The visitor is deliberately not sent back to Mollie for a pending payment.
 Mollie's API hands out no checkout link for one, and the checkout URL from the
@@ -124,12 +128,14 @@ Mollie reports it `paid`, `expired`, `canceled` or `failed`, and meanwhile:
   hour until Mollie expires it. Mollie refuses to cancel a payment without a
   method (`isCancelable` is `false`), so the replaced one stays payable until
   Mollie expires it. The token keeps it aside, and picking its period again
-  leads back to it instead of creating yet another payment: however often
-  the visitor switches, Mollie holds no more than one payment per period for
-  the token. Were the one set aside paid after all, from the visitor's
-  browser history, the webhook still extends their token with it — unless the
-  token is valid again by then, see
-  [A payment that buys nothing](#a-payment-that-buys-nothing).
+  leads back to it instead of creating yet another payment — also once the
+  payment that replaced it is gone, and also once a method was picked for it
+  from the visitor's browser history, since that attempt may still go
+  through. However often the visitor switches, Mollie holds no more than one
+  payment per period for the token. Both payments are looked up whenever the
+  page loads, so one paid after all, from the browser history, extends the
+  token even where no webhook gets through — unless the token is valid again
+  by then, see [A payment that buys nothing](#a-payment-that-buys-nothing).
 - a bank transfer, `open` until the money arrives, shows "waiting for your
   bank transfer" and **Show payment details**, which is Mollie's page with the
   transfer data.
@@ -394,8 +400,8 @@ while the token has a payment Mollie still holds open, `null` otherwise.
 payment_in_progress` when that payment is being processed and Mollie has no
 checkout left to show.
 
-(²) `wait` says whether the page should hold back: a `pending` payment started
-within the last fifteen minutes. `dashboardUrl` is the payment in the Mollie
+(²) `wait` says whether the page should hold back: a payment the app first
+saw `pending` within the last fifteen minutes. `dashboardUrl` is the payment in the Mollie
 dashboard, set for a logged-in admin only and `null` for everyone else.
 
 ---

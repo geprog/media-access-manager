@@ -21,7 +21,12 @@ describe('payment notices', () => {
   it('keeps a payment in view until an admin dismisses it', async () => {
     recordPaymentNotice({ paymentId: 'tr_1', kind: 'unapplied', description: 'Yoga – 1 year access', dashboardUrl: 'https://mollie.example/tr_1' });
 
-    expect(await listOpenPaymentNotices()).toMatchObject([{ paymentId: 'tr_1', kind: 'unapplied', dismissedAt: null }]);
+    const [notice] = await listOpenPaymentNotices();
+    expect(notice).toMatchObject({ paymentId: 'tr_1', kind: 'unapplied', dismissedAt: null });
+    // Dated, so the banner can say when: the column's own default is a text
+    // the timestamp mapping cannot read.
+    expect(notice?.createdAt).toBeInstanceOf(Date);
+    expect(Math.abs(notice!.createdAt.getTime() - Date.now())).toBeLessThan(5000);
 
     expect(dismissPaymentNotice('tr_1')).toBe(true);
     expect(await listOpenPaymentNotices()).toEqual([]);
